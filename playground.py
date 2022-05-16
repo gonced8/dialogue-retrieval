@@ -111,12 +111,6 @@ for (x_id, x), (y_id, y) in tqdm(
         "rouge": scores,
     }
 
-    # Use only 100 examples
-    if n == 100:
-        break
-    else:
-        n += 1
-
     if DEBUG:
         print(x_id, x, "", sep="\n")
         print(y_id, y, "", sep="\n")
@@ -134,5 +128,5 @@ ratios = [pair["ratio"] for pair in pairs.values()]
 rouges = [pair["rouge"]["rouge-l"]["f"] for pair in pairs.values()]
 
 plot = sns.relplot(x=ratios, y=rouges, kind="line")
-fig = plot.get_figure()
-fig.savefig("plot.pdf")
+plot.set_axis_labels("Ratio", "ROUGEL-F1")
+plot.fig.savefig("plot.pdf")
