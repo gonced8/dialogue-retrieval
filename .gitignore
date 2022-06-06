@@ -1,5 +1,4 @@
-data.json
-pairs.json
+data/multiwoz/*/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
