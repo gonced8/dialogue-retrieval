@@ -3,6 +3,7 @@ from difflib import SequenceMatcher
 from itertools import cycle
 import json
 import os
+import random
 
 from bert_score import BERTScorer
 from rouge_score.rouge_scorer import RougeScorer
@@ -217,12 +218,20 @@ sidebar_pairs()
 # Choose dialogues and write them
 st.header("Dialogues")
 
-if st.button("Swap"):
-    d1_index = sorted_data_keys.index(st.session_state.selected_pair[0])
-    d2_index = sorted_data_keys.index(st.session_state.selected_pair[1])
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("Swap"):
+        d1_index = sorted_data_keys.index(st.session_state.selected_pair[0])
+        d2_index = sorted_data_keys.index(st.session_state.selected_pair[1])
 
-    st.session_state.dialogue_1 = sorted_data_items[d2_index]
-    st.session_state.dialogue_2 = sorted_data_items[d1_index]
+        st.session_state.dialogue_1 = sorted_data_items[d2_index]
+        st.session_state.dialogue_2 = sorted_data_items[d1_index]
+with col2:
+    if st.button("Random"):
+        st.session_state.dialogue_1, st.session_state.dialogue_2 = random.sample(
+            sorted_data_items, 2
+        )
+
 
 col1, col2 = st.columns(2)
 with col1:
