@@ -1,16 +1,90 @@
 {
-    "0.0": [],
-    "0.25": [
+    "0.0": [
         [
-            "MUL0012.json",
-            "SNG01201.json"
+            "MUL1174.json",
+            "MUL1426.json"
+        ],
+        [
+            "PMUL1186.json",
+            "SNG0843.json"
+        ],
+        [
+            "MUL0635.json",
+            "PMUL2386.json"
+        ],
+        [
+            "PMUL0959.json",
+            "PMUL4287.json"
+        ],
+        [
+            "MUL1617.json",
+            "MUL1126.json"
+        ],
+        [
+            "MUL1042.json",
+            "PMUL0589.json"
         ]
     ],
-    "0.5": [],
+    "0.25": [
+        [
+            "SNG02089.json",
+            "PMUL2585.json"
+        ],
+        [
+            "PMUL3320.json",
+            "MUL2470.json"
+        ],
+        [
+            "PMUL1389.json",
+            "PMUL2144.json"
+        ],
+        [
+            "MUL2574.json",
+            "PMUL1791.json"
+        ]
+    ],
+    "0.5": [
+        [
+            "MUL2291.json",
+            "MUL0610.json"
+        ],
+        [
+            "PMUL3363.json",
+            "MUL1808.json"
+        ],
+        [
+            "PMUL3169.json",
+            "SNG0422.json"
+        ],
+        [
+            "PMUL1795.json",
+            "PMUL2464.json"
+        ],
+        [
+            "PMUL1683.json",
+            "PMUL2532.json"
+        ],
+        [
+            "PMUL1352.json",
+            "MUL0737.json"
+        ]
+    ],
     "0.75": [
         [
             "SNG01201.json",
             "MUL0012.json"
+        ],
+        [
+            "PMUL3634.json",
+            "PMUL3050.json"
+        ],
+        [
+            "SNG0829.json",
+            "PMUL3645.json"
+        ],
+        [
+            "MUL0426.json",
+            "MUL0544.json"
         ]
     ],
     "1.0": []

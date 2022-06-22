@@ -6,6 +6,7 @@ import os
 import random
 
 from bert_score import BERTScorer
+import matplotlib.pyplot as plt
 from rouge_score.rouge_scorer import RougeScorer
 import streamlit as st
 import textdistance
@@ -23,8 +24,9 @@ def init():
     sorted_data_keys = sorted(data.keys())
     sorted_data_items = sorted(data.items())
 
-    # Disable warnings of Transformers
+    # Disable warnings
     logging.set_verbosity_error()
+    plt.set_loglevel("WARNING")
 
     bert_scorer = BERTScorer(lang="en", rescale_with_baseline=True)
     rouge_scorer = RougeScorer(["rouge1", "rouge2", "rougeL"])
@@ -74,10 +76,9 @@ def hide_table_index():
     st.markdown(hide_dataframe_row_index, unsafe_allow_html=True)
 
 
-def get_n_pairs(similarity):
+def get_n_pairs():
     n = {s: len(pairs) for s, pairs in st.session_state.pairs.items()}
-    total = sum(n.values())
-    return f"{n[similarity]} of {total}"
+    return n
 
 
 def sidebar_pairs():
@@ -112,9 +113,13 @@ def sidebar_pairs():
                 write_json(filename_pairs, st.session_state.pairs)
 
     # Select pairs
+    n_pairs = get_n_pairs()
+    sum_n_pairs = sum(n_pairs.values())
+
     st.session_state.stored_pair = pair_selector.selectbox(
-        f"Pairs: {get_n_pairs(similarity)}",
+        f"Pairs: {n_pairs[similarity]} of {sum_n_pairs}",
         st.session_state.pairs[similarity],
+        index=n_pairs[similarity] - 1,
     )
 
     # Load pair
@@ -125,6 +130,14 @@ def sidebar_pairs():
 
             st.session_state.dialogue_1 = sorted_data_items[d1_index]
             st.session_state.dialogue_2 = sorted_data_items[d2_index]
+
+    # Plot histogram of saved pairs
+    st.sidebar.caption("Plot of saved pairs")
+    fig, ax = plt.subplots()
+    ax.bar(list(n_pairs.keys()), n_pairs.values())
+    ax.set_xlabel("Similarity")
+    ax.set_ylabel("Number of pairs")
+    st.sidebar.pyplot(fig)
 
 
 def get_conversation(d, speaker=True):
@@ -216,8 +229,9 @@ data, sorted_data_keys, sorted_data_items, bert_scorer, rouge_scorer = init()
 sidebar_pairs()
 
 # Choose dialogues and write them
-st.header("Dialogues")
+st.header("Dialogues from MultiWOZ 2.2")
 
+# Swap selected dialogues or pick random
 col1, col2 = st.columns(2)
 with col1:
     if st.button("Swap"):
