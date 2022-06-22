@@ -317,7 +317,7 @@ with col2:
 
 # Flatten sequences
 st.subheader("Flattened sequences")
-concatenate = st.checkbox("Concatenate annotations")
+concatenate = st.checkbox("Concatenate annotations", value=True)
 flat_seq1 = flatten(seq1, concatenate)
 flat_seq2 = flatten(seq2, concatenate)
 st.text(flat_seq1)

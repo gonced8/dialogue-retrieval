@@ -23,6 +23,10 @@
         [
             "MUL1042.json",
             "PMUL0589.json"
+        ],
+        [
+            "SNG0900.json",
+            "PMUL2386.json"
         ]
     ],
     "0.25": [
@@ -41,6 +45,18 @@
         [
             "MUL2574.json",
             "PMUL1791.json"
+        ],
+        [
+            "MUL1247.json",
+            "MUL0650.json"
+        ],
+        [
+            "PMUL2585.json",
+            "MUL0888.json"
+        ],
+        [
+            "SNG0329.json",
+            "SNG0650.json"
         ]
     ],
     "0.5": [
@@ -67,6 +83,18 @@
         [
             "PMUL1352.json",
             "MUL0737.json"
+        ],
+        [
+            "PMUL1831.json",
+            "SNG0277.json"
+        ],
+        [
+            "PMUL1517.json",
+            "PMUL0622.json"
+        ],
+        [
+            "MUL2649.json",
+            "MUL1131.json"
         ]
     ],
     "0.75": [
