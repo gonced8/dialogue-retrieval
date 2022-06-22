@@ -1,4 +1,7 @@
-import json
+"""Plot the transition frequency of the dialogue acts
+for both, user, agent, and per turn
+"""
+
 import matplotlib.pyplot as plt
 import numpy as np
 import os

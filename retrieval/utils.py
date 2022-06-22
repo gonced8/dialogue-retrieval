@@ -1,12 +1,13 @@
 import collections
 import itertools
+import json
 
 
-def get_sequences(filename_data, mode="dialogue_acts"):
+def get_sequences(filename_data, mode="dialogue_acts", speaker="both", debug=False):
     with open(filename_data, "r") as f:
         data = json.load(f)
 
-    if DEBUG:
+    if debug:
         acts = set()
         slots = set()
         values = set()
@@ -15,6 +16,12 @@ def get_sequences(filename_data, mode="dialogue_acts"):
     sequences = collections.defaultdict(list)
 
     for dialogue, turns in data.items():
+        # If speaker is not both, select user or agent turns
+        if speaker == "user":
+            turns = turns[::2]
+        elif speaker == "agent":
+            turns = turns[1::2]
+
         for turn in turns:
             subsequence = []
 
@@ -24,7 +31,7 @@ def get_sequences(filename_data, mode="dialogue_acts"):
                 else:
                     acts_slots_i = [dialogue_act]
 
-                if DEBUG:
+                if debug:
                     acts.add(dialogue_act)
                     slots.update(slots_dict.keys())
                     values.update(slots_dict.values())
@@ -39,7 +46,7 @@ def get_sequences(filename_data, mode="dialogue_acts"):
 
             sequences[dialogue].append(subsequence)
 
-    if DEBUG:
+    if debug:
         acts = sorted(acts)
         slots = sorted(slots)
         values = sorted(values)
@@ -48,16 +55,16 @@ def get_sequences(filename_data, mode="dialogue_acts"):
         print("Dialogue acts: ", len(acts), "\n", acts, "\n", sep="")
         print("Slots: ", len(slots), "\n", slots, "\n", sep="")
         print("Values: ", len(values), "\n", sep="")
-        print("Acts and Slots: ", len(acts_slots), "\n", acts_slots, "\n", sep="")
+        # print("Acts and Slots: ", len(acts_slots), "\n", acts_slots, "\n", sep="")
 
-        print(
-            "Example: ",
-            next(iter(sequences.keys())),
-            "\n",
-            next(iter(sequences.values())),
-            "\n",
-            sep="",
-        )
+        # print(
+        #     "Example: ",
+        #     next(iter(sequences.keys())),
+        #     "\n",
+        #     next(iter(sequences.values())),
+        #     "\n",
+        #     sep="",
+        # )
 
     return sequences
 

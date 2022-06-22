@@ -1,6 +1,8 @@
+from collections import defaultdict
 from difflib import SequenceMatcher
 from itertools import cycle
-import json, _json
+import json
+import os
 
 from bert_score import BERTScorer
 from rouge_score.rouge_scorer import RougeScorer
@@ -10,11 +12,15 @@ from transformers import logging
 
 st.set_page_config(layout="wide")
 
+filename_data = "../data/multiwoz/processed/data.json"
+filename_pairs = "pairs.json"
+
 
 @st.cache(allow_output_mutation=True)
 def init():
-    filename_data = "../data/multiwoz/processed/data.json"
     data = read_json(filename_data)
+    sorted_data_keys = sorted(data.keys())
+    sorted_data_items = sorted(data.items())
 
     # Disable warnings of Transformers
     logging.set_verbosity_error()
@@ -22,13 +28,29 @@ def init():
     bert_scorer = BERTScorer(lang="en", rescale_with_baseline=True)
     rouge_scorer = RougeScorer(["rouge1", "rouge2", "rougeL"])
 
-    return data, bert_scorer, rouge_scorer
+    # Load pairs
+    if os.path.isfile(filename_pairs):
+        pairs = read_json(filename_pairs)
+        pairs = defaultdict(list, pairs)
+    else:
+        pairs = defaultdict(list)
+
+    st.session_state.pairs = pairs
+    st.session_state.stored_pair = None
+    st.session_state.selected_pair = None
+
+    return data, sorted_data_keys, sorted_data_items, bert_scorer, rouge_scorer
 
 
 def read_json(filename):
     with open(filename, "r") as f:
         data = json.load(f)
     return data
+
+
+def write_json(filename, data):
+    with open(filename, "w") as f:
+        json.dump(data, f, indent=4)
 
 
 def hide_table_index():
@@ -51,6 +73,59 @@ def hide_table_index():
     st.markdown(hide_dataframe_row_index, unsafe_allow_html=True)
 
 
+def get_n_pairs(similarity):
+    n = {s: len(pairs) for s, pairs in st.session_state.pairs.items()}
+    total = sum(n.values())
+    return f"{n[similarity]} of {total}"
+
+
+def sidebar_pairs():
+    # Sidebar to load examples
+    step = 0.25
+    similarity = str(
+        st.sidebar.slider(
+            "Similarity", min_value=0.0, max_value=1.0, value=1.0, step=step
+        )
+    )
+
+    pair_selector = st.sidebar.empty()
+    scol1, scol2, scol3 = st.sidebar.columns(3)
+
+    # Save pair
+    with scol2:
+        if (
+            st.button("Save")
+            and st.session_state.selected_pair not in st.session_state.pairs[similarity]
+        ):
+            st.session_state.pairs[similarity].append(st.session_state.selected_pair)
+            write_json(filename_pairs, st.session_state.pairs)
+
+    # Delete pair
+    with scol3:
+        if st.button("Delete"):
+            try:
+                st.session_state.pairs[similarity].remove(st.session_state.stored_pair)
+            except ValueError as e:
+                print(e)
+            else:
+                write_json(filename_pairs, st.session_state.pairs)
+
+    # Select pairs
+    st.session_state.stored_pair = pair_selector.selectbox(
+        f"Pairs: {get_n_pairs(similarity)}",
+        st.session_state.pairs[similarity],
+    )
+
+    # Load pair
+    with scol1:
+        if st.button("Load"):
+            d1_index = sorted_data_keys.index(st.session_state.stored_pair[0])
+            d2_index = sorted_data_keys.index(st.session_state.stored_pair[1])
+
+            st.session_state.dialogue_1 = sorted_data_items[d1_index]
+            st.session_state.dialogue_2 = sorted_data_items[d2_index]
+
+
 def get_conversation(d, speaker=True):
     return "\n".join(
         speaker + turn["utterance"]
@@ -66,8 +141,8 @@ def compute_bert_score(bert_scorer, conversation1, conversation2):
 
 
 @st.cache(hash_funcs={RougeScorer: lambda _: None})
-def compute_rouge_scores(rouge_scorer, conversation1, conversation2):
-    rouge_scores = rouge_scorer.score(conversation1, conversation2)
+def compute_rouge_scores(rouge_scorer, prediction, reference):
+    rouge_scores = rouge_scorer.score(reference, prediction)
     new_rouge_scores = {}
 
     for rouge_type, scores in rouge_scores.items():
@@ -136,14 +211,26 @@ def flatten(sequence, concatenate=False):
 
 # Initialize
 hide_table_index()
-data, bert_scorer, rouge_scorer = init()
+data, sorted_data_keys, sorted_data_items, bert_scorer, rouge_scorer = init()
+sidebar_pairs()
 
 # Choose dialogues and write them
 st.header("Dialogues")
+
+if st.button("Swap"):
+    d1_index = sorted_data_keys.index(st.session_state.selected_pair[0])
+    d2_index = sorted_data_keys.index(st.session_state.selected_pair[1])
+
+    st.session_state.dialogue_1 = sorted_data_items[d2_index]
+    st.session_state.dialogue_2 = sorted_data_items[d1_index]
+
 col1, col2 = st.columns(2)
 with col1:
     d1_id, d1 = st.selectbox(
-        "Choose dialogue", options=sorted(data.items()), format_func=lambda x: x[0]
+        "Choose dialogue",
+        options=sorted(data.items()),
+        format_func=lambda x: x[0],
+        key="dialogue_1",
     )
 
     st.write(f"No. turns: {len(d1)}")
@@ -151,19 +238,27 @@ with col1:
 
 with col2:
     d2_id, d2 = st.selectbox(
-        "Choose reference", options=sorted(data.items()), format_func=lambda x: x[0]
+        "Choose reference",
+        options=sorted(data.items()),
+        format_func=lambda x: x[0],
+        key="dialogue_2",
     )
 
     st.write(f"No. turns: {len(d2)}")
     st.text(get_conversation(d2))
+
+# Update selected pair
+st.session_state.selected_pair = [d1_id, d2_id]
 
 # Score text similarity
 st.subheader("Scores")
 conversation1 = get_conversation(d1, speaker=False)
 conversation2 = get_conversation(d2, speaker=False)
 
-bert_score = compute_bert_score(bert_scorer, conversation1, conversation2)
-st.table({f"BERTScore-{k}": [v] for k, v in bert_score.items()})
+compute = st.checkbox("Compute BERTScore", value=False)
+if compute:
+    bert_score = compute_bert_score(bert_scorer, conversation1, conversation2)
+    st.table({f"BERTScore-{k}": [v] for k, v in bert_score.items()})
 
 rouge_scores = compute_rouge_scores(rouge_scorer, conversation1, conversation2)
 rouge_table = {"x": [x[len("ROUGE") :] for x in rouge_scores.keys()]}
