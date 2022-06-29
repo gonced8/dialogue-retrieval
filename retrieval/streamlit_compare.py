@@ -1,6 +1,5 @@
 from collections import defaultdict
 from difflib import SequenceMatcher
-from itertools import cycle
 import json
 import os
 import random
@@ -12,10 +11,12 @@ import streamlit as st
 import textdistance
 from transformers import logging
 
+from utils import *
+
 st.set_page_config(layout="wide")
 
-filename_data = "../data/multiwoz/processed/data.json"
-filename_pairs = "pairs.json"
+filename_data = "../data/multiwoz/processed/dev.json"
+filename_pairs = "streamlit_pairs.json"
 
 
 @st.cache(allow_output_mutation=True)
@@ -140,13 +141,6 @@ def sidebar_pairs():
     st.sidebar.pyplot(fig)
 
 
-def get_conversation(d, speaker=True):
-    return "\n".join(
-        speaker + turn["utterance"]
-        for speaker, turn in zip(cycle(["USER:  ", "AGENT: "] if speaker else [""]), d)
-    )
-
-
 @st.cache(hash_funcs={BERTScorer: lambda _: None})
 def compute_bert_score(bert_scorer, conversation1, conversation2):
     bert_score = bert_scorer.score([conversation1], [conversation2])
@@ -169,58 +163,6 @@ def compute_rouge_scores(rouge_scorer, prediction, reference):
         }
 
     return new_rouge_scores
-
-
-def get_sequence(dialogue, annotations):
-    sequence = []
-
-    # Loop through turns
-    for turn in dialogue:
-        subsequence = []
-
-        # Loop through dialogue acts
-        for dialogue_act, slots_dict in turn["dialogue_acts"].items():
-            domain, dialogue_act = dialogue_act.split("-")
-
-            # Special case where there is no slots/values or we don't want them
-            if not slots_dict or not (
-                "slots" in annotations or "values" in annotations
-            ):
-                slots_dict = {None: None}
-
-            # Loop through slots and values
-            for slot, value in slots_dict.items():
-                element = []
-
-                if "domains" in annotations:
-                    element.append(domain)
-                if "dialogue acts" in annotations:
-                    element.append(dialogue_act)
-                if "slots" in annotations and slot is not None:
-                    element.append(slot)
-                if "values" in annotations and value is not None:
-                    element.append(value)
-
-                if element:
-                    subsequence.append(tuple(element))
-
-        if subsequence:
-            sequence.append(subsequence)
-
-    return sequence
-
-
-def flatten(sequence, concatenate=False):
-    if concatenate:
-        return [
-            "".join(x.title().replace(" ", "") for x in element)
-            for subsequence in sequence
-            for element in subsequence
-        ]
-    else:
-        return [
-            x for subsequence in sequence for element in subsequence for x in element
-        ]
 
 
 # Initialize
@@ -298,8 +240,8 @@ st.header("Sequences")
 # Select which annotations to use for the sequences
 annotations = st.multiselect(
     "Annotations to use for the sequences",
-    options=["domains", "dialogue acts", "slots", "values"],
-    default=["domains", "dialogue acts"],
+    options=["domains", "acts", "slots", "values"],
+    default=["domains", "acts"],
 )
 
 

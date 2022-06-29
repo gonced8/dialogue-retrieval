@@ -4,9 +4,9 @@ from tqdm import tqdm
 
 DEBUG = False
 
-dataset_dir = "../data/multiwoz/original/data/MultiWOZ_2.2/dev/"
+dataset_dir = "../data/multiwoz/original/data/MultiWOZ_2.2/train/"
 filename_dialogue_acts = "../data/multiwoz/original/data/MultiWOZ_2.2/dialog_acts.json"
-filename_data = "../data/multiwoz/processed/data.json"
+filename_data = "../data/multiwoz/processed/train.json"
 
 if __name__ == "__main__":
     data = {}

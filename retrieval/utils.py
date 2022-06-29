@@ -1,6 +1,48 @@
 import collections
 import itertools
 import json
+import random
+
+from tqdm.contrib.concurrent import process_map
+
+
+def get_sequence(dialogue, annotations):
+    sequence = []
+
+    # Loop through turns
+    for turn in dialogue:
+        subsequence = []
+
+        # Loop through dialogue acts
+        for dialogue_act, slots_dict in turn["dialogue_acts"].items():
+            domain, dialogue_act = dialogue_act.split("-")
+
+            # Special case where there is no slots/values or we don't want them
+            if not slots_dict or not (
+                "slots" in annotations or "values" in annotations
+            ):
+                slots_dict = {None: None}
+
+            # Loop through slots and values
+            for slot, value in slots_dict.items():
+                element = []
+
+                if "domains" in annotations:
+                    element.append(domain)
+                if "acts" in annotations:
+                    element.append(dialogue_act)
+                if "slots" in annotations and slot is not None:
+                    element.append(slot)
+                if "values" in annotations and value is not None:
+                    element.append(value)
+
+                if element:
+                    subsequence.append(tuple(element))
+
+        if subsequence:
+            sequence.append(subsequence)
+
+    return sequence
 
 
 def get_sequences(filename_data, mode="dialogue_acts", speaker="both", debug=False):
@@ -74,3 +116,57 @@ def pairwise(iterable):
     a, b = itertools.tee(iterable)
     next(b, None)
     return zip(a, b)
+
+
+def flatten(sequence, concatenate=False):
+    if concatenate:
+        return [
+            "".join(x.title().replace(" ", "") for x in element)
+            for subsequence in sequence
+            for element in subsequence
+        ]
+    else:
+        return [
+            x for subsequence in sequence for element in subsequence for x in element
+        ]
+
+
+def sample(it, length, k, max_workers=8):
+    indices = random.sample(range(length), k)
+    result = [None] * k
+
+    for idx, value in enumerate(tqdm(it, desc="Sampling...", total=length)):
+        try:
+            i = indices.index(idx)
+            result[i] = value
+
+            # If filled k elements, end
+            k -= 1
+            if not k:
+                break
+
+        except ValueError:
+            continue
+
+    return result
+
+
+def random_combinations(iterable, r, k=1):
+    """Random selection from itertools.combinations(iterable, r)
+    Returns k combinations
+    """
+    pool = tuple(iterable)
+    n = len(pool)
+
+    for _ in range(k):
+        indices = random.sample(range(n), r)
+        yield tuple(pool[i] for i in indices)
+
+
+def get_conversation(d, speaker=True):
+    return "\n".join(
+        speaker + turn["utterance"]
+        for speaker, turn in zip(
+            itertools.cycle(["USER:  ", "AGENT: "] if speaker else [""]), d
+        )
+    )
