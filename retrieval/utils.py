@@ -151,15 +151,19 @@ def sample(it, length, k, max_workers=8):
     return result
 
 
-def random_combinations(iterable, r, k=1):
+def random_combinations(iterable, r, k=1, repeat=False, seed=None):
     """Random selection from itertools.combinations(iterable, r)
     Returns k combinations
     """
     pool = tuple(iterable)
     n = len(pool)
+    random.seed(seed)
 
     for _ in range(k):
-        indices = random.sample(range(n), r)
+        if repeat:
+            indices = random.choices(range(n), k=r)
+        else:
+            indices = random.sample(range(n), k=r)
         yield tuple(pool[i] for i in indices)
 
 

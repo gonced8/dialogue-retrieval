@@ -1,0 +1,145 @@
+import json
+import math
+import os
+import random
+
+import pytorch_lightning as pl
+import torch
+
+
+class MultiWOZ(pl.LightningDataModule):
+    def __init__(self, args):
+        super().__init__()
+        self.data_dir = args.data_dir
+        self.total_batch_size = args.total_batch_size
+        self.batch_size = args.batch_size
+        self.num_workers = args.num_workers
+        self.collate_fn = args.collate_fn
+
+    def prepare_data(self):
+        # Get datasets filenames and check if files exist
+        self.datasets_filenames = {
+            mode: os.path.join(self.data_dir, f"{mode}.json")
+            for mode in ["train", "val", "test"]
+        }
+
+        self.datasets_filenames = {
+            mode: filename if os.path.isfile(filename) else None
+            for mode, filename in self.datasets_filenames.items()
+        }
+
+    def setup(self, stage=None):
+        if stage in (None, "fit"):
+            self.train_dataset = MultiWOZDataset(
+                self.datasets_filenames["train"],
+                total_batch_size=self.total_batch_size,
+                seed=0,
+            )
+            self.val_dataset = MultiWOZDataset(
+                self.datasets_filenames["val"],
+                total_batch_size=self.total_batch_size,
+                seed=0,
+            )
+
+        if stage in (None, "test"):
+            self.val_dataset = MultiWOZDataset(
+                self.datasets_filenames["test"],
+                total_batch_size=total_batch_size,
+                seed=0,
+            )
+
+    def train_dataloader(self):
+        return DataLoader(
+            self.train_dataset,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            collate_fn=self.collate_fn,
+            shuffle=True,
+            pin_memory=bool(torch.cuda.device_count()),
+        )
+
+    def val_dataloader(self):
+        return
+
+    def test_dataloader(self):
+        return
+
+    @staticmethod
+    def add_model_specific_args(parent_parser):
+        parser = parent_parser.add_argument_group("DataModule: MultiWOZ")
+        parser.add_argument(
+            "--data_dir", type=str, default="../data/multiwoz/processed/"
+        )
+        parser.add_argument("--total_batch_size", type=int, default=1000)
+        parser.add_argument("--batch_size", type=int, default=8)
+        parser.add_argument("--num_workers", type=int, default=min(8, os.cpu_count()))
+        parser.add_argument("--collate_fn", type=str, default=None)
+        return parent_parser
+
+
+class RandomPairsDataset(torch.utils.data.Dataset):
+    def __init__(self, dataset, total_batch_size=1000, seed=None):
+        self.dataset = dataset
+        self.total_batch_size = total_batch_size
+        self.samples = None
+        self.randomize()
+
+    def __getitem__(self, idx):
+        return self.samples[idx]
+
+    def __len__(self):
+        return self.total_batch_size
+
+    def total_size(self):
+        return math.comb(len(self.dataset), 2)
+
+    def randomize(self, seed=None):
+        self.samples = tuple(
+            self.random_combinations(
+                self.dataset, 2, self.total_batch_size, repeat=True, seed=seed
+            )
+        )
+
+    @staticmethod
+    def random_combinations(iterable, r, k=1, repeat=False, seed=None):
+        """Random selection from itertools.combinations(iterable, r)
+        Returns k combinations
+        """
+        pool = tuple(iterable)
+        n = len(pool)
+        random.seed(seed)
+
+        for _ in range(k):
+            if repeat:
+                indices = random.choices(range(n), k=r)
+            else:
+                indices = random.sample(range(n), k=r)
+            yield tuple(pool[i] for i in indices)
+
+
+class MultiWOZDataset(RandomPairsDataset):
+    def __init__(self, filename, total_batch_size=1000, seed=None):
+        with open(filename, "r") as f:
+            dataset = json.load(f)
+
+        super().__init__(dataset, total_batch_size, seed)
+
+    def __getitem__(self, idx):
+        pair = super().__getitem__(idx)
+        pair = {k: self.dataset[k] for k in pair}
+        return pair
+
+
+if __name__ == "__main__":
+    from argparse import ArgumentParser
+
+    parser = ArgumentParser()
+    parser = MultiWOZ.add_model_specific_args(parser)
+
+    args = parser.parse_args()
+    data = MultiWOZ(args)
+    data.prepare_data()
+    data.setup("fit")
+
+    dataset = data.train_dataset
+    print(dataset[0])
