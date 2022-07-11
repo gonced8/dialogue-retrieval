@@ -5,6 +5,7 @@ import random
 
 import pytorch_lightning as pl
 import torch
+from tqdm import tqdm
 
 
 class MultiWOZ(pl.LightningDataModule):
@@ -59,10 +60,24 @@ class MultiWOZ(pl.LightningDataModule):
         )
 
     def val_dataloader(self):
-        return
+        return DataLoader(
+            self.val_dataset,
+            batch_size=self.val_batch_size,
+            num_workers=self.num_workers,
+            collate_fn=self.collate_fn,
+            shuffle=False,
+            pin_memory=bool(torch.cuda.device_count()),
+        )
 
     def test_dataloader(self):
-        return
+        return DataLoader(
+            self.test_dataset,
+            batch_size=self.test_batch_size,
+            num_workers=self.num_workers,
+            collate_fn=self.collate_fn,
+            shuffle=False,
+            pin_memory=bool(torch.cuda.device_count()),
+        )
 
     @staticmethod
     def add_model_specific_args(parent_parser):
@@ -70,8 +85,10 @@ class MultiWOZ(pl.LightningDataModule):
         parser.add_argument(
             "--data_dir", type=str, default="../data/multiwoz/processed/"
         )
-        parser.add_argument("--total_batch_size", type=int, default=1000)
+        parser.add_argument("--total_batch_size", type=int, default=100000)
         parser.add_argument("--batch_size", type=int, default=8)
+        parser.add_argument("--val_batch_size", type=int, default=1)
+        parser.add_argument("--test_batch_size", type=int, default=1)
         parser.add_argument("--num_workers", type=int, default=min(8, os.cpu_count()))
         parser.add_argument("--collate_fn", type=str, default=None)
         return parent_parser
@@ -82,7 +99,7 @@ class RandomPairsDataset(torch.utils.data.Dataset):
         self.dataset = dataset
         self.total_batch_size = total_batch_size
         self.samples = None
-        self.randomize()
+        self.randomize(seed)
 
     def __getitem__(self, idx):
         return self.samples[idx]
@@ -122,12 +139,40 @@ class MultiWOZDataset(RandomPairsDataset):
         with open(filename, "r") as f:
             dataset = json.load(f)
 
+        # Initialize dataset and randomize
         super().__init__(dataset, total_batch_size, seed)
 
     def __getitem__(self, idx):
+        # Gets dialogues from dialogue ids
         pair = super().__getitem__(idx)
-        pair = {k: self.dataset[k] for k in pair}
+        pair = {d_id: self.dataset[d_id] for d_id in pair}
+
+        # Cuts dialogue according to randomized segment size
+        pair = {
+            d_id: dialogue[start:end]
+            for (d_id, dialogue), (start, end) in zip(pair.items(), self.segments[idx])
+        }
+
         return pair
+
+    def randomize(self, seed=None):
+        super().randomize(seed)
+        self.segments = self.random_segments(seed)
+
+    def random_segments(self, seed=None):
+        random.seed(seed)
+        return [
+            [
+                sorted(random.sample(range(0, n_turns), 2))
+                for n_turns in [
+                    len(self.dataset[d_id]) for d_id in pair_ids
+                ]  # n_turns of each dialogue
+            ]
+            for pair_ids in tqdm(
+                self.samples,
+                desc="Generating random segments for each sample (pair of dialogues)",
+            )
+        ]
 
 
 if __name__ == "__main__":
@@ -142,4 +187,5 @@ if __name__ == "__main__":
     data.setup("fit")
 
     dataset = data.train_dataset
-    print(dataset[0])
+    print(*dataset[0].items(), sep="\n")
+    print(dataset.segments[0])
