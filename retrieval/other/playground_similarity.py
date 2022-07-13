@@ -10,8 +10,10 @@ from tqdm import tqdm
 
 DEBUG = False
 
-filedir = "../multiwoz/data/MultiWOZ_2.2/dev/"
-filename_dialogue_acts = "../multiwoz/data/MultiWOZ_2.2/dialog_acts.json"
+filedir = "../../data/multiwoz/original/data/MultiWOZ_2.2/dev/"
+filename_dialogue_acts = (
+    "../../data/multiwoz/original/data/data/MultiWOZ_2.2/dialog_acts.json"
+)
 filename_data = "data.json"
 filename_pairs = "pairs.json"
 

@@ -4,7 +4,7 @@
 from utils import get_sequences
 
 if __name__ == "__main__":
-    filename_data = "../data/multiwoz/processed/dev.json"
+    filename_data = "../../data/multiwoz/processed/dev.json"
 
     # Both
     print("#########\n# {: <5} #\n#########\n".format("Both"))

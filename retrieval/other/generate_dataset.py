@@ -8,8 +8,8 @@ from tqdm.contrib.concurrent import process_map
 import textdistance
 from utils import *
 
-filename_data = "../data/multiwoz/processed/train.json"
-filename_output = "../data/multiwoz/processed/pairs_train.json"
+filename_data = "../../data/multiwoz/processed/train.json"
+filename_output = "../../data/multiwoz/processed/pairs_train.json"
 annotations = ["domains", "acts", "slots", "values"]
 concatenate = False  # Whether to concatenate annotations
 round_n = 6

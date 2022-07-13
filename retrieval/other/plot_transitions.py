@@ -12,8 +12,8 @@ DEBUG = True
 PLOT = False
 SAVE = True
 
-filename_data = "../data/multiwoz/processed/dev.json"
-plot_folder = "../plots/transitions"
+filename_data = "../../data/multiwoz/processed/dev.json"
+plot_folder = "../../plots/transitions"
 
 
 def compute_transitions(sequences, return_labels=False):

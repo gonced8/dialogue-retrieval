@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
-dir_pairs = "../data/multiwoz/processed/"
-dir_hists = "../plots/"
+dir_pairs = "../../data/multiwoz/processed/"
+dir_hists = "../../plots/"
 SHOW = False
 SAVE = True
 

@@ -1,8 +1,11 @@
 import pytorch_lightning as pl
 from sentence_transformers import SentenceTransformer
+from transformers.optimization import AdamW
+
+import torch.nn as nn
 
 
-class Retriever(pl.LigtningModule):
+class Retriever(pl.LightningModule):
     def __init__(self, args):
         super().__init__()
         self.save_hyperparameters(args)
@@ -18,3 +21,17 @@ class Retriever(pl.LigtningModule):
 
     def training_step(self, batch, batch_idx):
         print(batch)
+        input()
+
+    # TODO randomize dataset with seed+epoch in the end of each epoch
+
+    def configure_optimizers(self):
+        optimizer = AdamW(self.parameters(), lr=self.hparams.lr)
+        return optimizer
+
+    @staticmethod
+    def add_argparse_args(parent_parser):
+        parser = parent_parser.add_argument_group("Module: Retriever")
+        parser.add_argument("--model_name", type=str, default="retriever")
+        parser.add_argument("--from_checkpoint", type=str, default="")
+        return parent_parser

@@ -9,8 +9,10 @@ import torch.nn.functional as F
 
 from utils import *
 
-filename_data = "../data/multiwoz/processed/train.json"
-filename_pairs = "../data/multiwoz/processed/pairs_train_domains+acts+slots+values.json"
+filename_data = "../../data/multiwoz/processed/train.json"
+filename_pairs = (
+    "../../data/multiwoz/processed/pairs_train_domains+acts+slots+values.json"
+)
 speaker = True
 chunk_size = 16  # must have an integer sqrt
 

@@ -5,17 +5,18 @@ import random
 
 import pytorch_lightning as pl
 import torch
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 
 class MultiWOZ(pl.LightningDataModule):
     def __init__(self, args):
         super().__init__()
+        self.seed = args.seed
         self.data_dir = args.data_dir
         self.total_batch_size = args.total_batch_size
         self.batch_size = args.batch_size
         self.num_workers = args.num_workers
-        self.collate_fn = args.collate_fn
 
     def prepare_data(self):
         # Get datasets filenames and check if files exist
@@ -34,19 +35,19 @@ class MultiWOZ(pl.LightningDataModule):
             self.train_dataset = MultiWOZDataset(
                 self.datasets_filenames["train"],
                 total_batch_size=self.total_batch_size,
-                seed=0,
+                seed=self.seed + 0,
             )
             self.val_dataset = MultiWOZDataset(
                 self.datasets_filenames["val"],
                 total_batch_size=self.total_batch_size,
-                seed=0,
+                seed=self.seed + 0,
             )
 
         if stage in (None, "test"):
             self.val_dataset = MultiWOZDataset(
                 self.datasets_filenames["test"],
                 total_batch_size=total_batch_size,
-                seed=0,
+                seed=self.seed + 0,
             )
 
     def train_dataloader(self):
@@ -80,8 +81,9 @@ class MultiWOZ(pl.LightningDataModule):
         )
 
     @staticmethod
-    def add_model_specific_args(parent_parser):
+    def add_argparse_args(parent_parser):
         parser = parent_parser.add_argument_group("DataModule: MultiWOZ")
+        parser.add_argument("--data_name", type=str, default="multiwoz")
         parser.add_argument(
             "--data_dir", type=str, default="../data/multiwoz/processed/"
         )
@@ -90,7 +92,6 @@ class MultiWOZ(pl.LightningDataModule):
         parser.add_argument("--val_batch_size", type=int, default=1)
         parser.add_argument("--test_batch_size", type=int, default=1)
         parser.add_argument("--num_workers", type=int, default=min(8, os.cpu_count()))
-        parser.add_argument("--collate_fn", type=str, default=None)
         return parent_parser
 
 
@@ -153,6 +154,9 @@ class MultiWOZDataset(RandomPairsDataset):
             for (d_id, dialogue), (start, end) in zip(pair.items(), self.segments[idx])
         }
 
+        # TODO extract ids, dialogues, extract sequences, measure similarity, convert to InputExamples
+        # TODO avoid repeating this computations
+
         return pair
 
     def randomize(self, seed=None):
@@ -179,7 +183,8 @@ if __name__ == "__main__":
     from argparse import ArgumentParser
 
     parser = ArgumentParser()
-    parser = MultiWOZ.add_model_specific_args(parser)
+    parser = MultiWOZ.add_argparse_args(parser)
+    parser.add_argument("--seed", type=str, default=42, help="seed")
 
     args = parser.parse_args()
     data = MultiWOZ(args)

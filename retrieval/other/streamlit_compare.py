@@ -15,7 +15,7 @@ from utils import *
 
 st.set_page_config(layout="wide")
 
-filename_data = "../data/multiwoz/processed/dev.json"
+filename_data = "../../data/multiwoz/processed/dev.json"
 filename_pairs = "streamlit_pairs.json"
 
 
