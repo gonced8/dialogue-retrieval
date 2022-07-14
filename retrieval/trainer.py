@@ -27,7 +27,7 @@ class Trainer(pl.Trainer):
         parser.add_argument("--monitor_mode", type=str, default="min")
         parser.add_argument("--save_results", action="store_true")
 
-        parent_parser = pl.Trainer().add_argparse_args(parent_parser)
+        parent_parser = pl.Trainer.add_argparse_args(parent_parser)
 
         return parent_parser
 

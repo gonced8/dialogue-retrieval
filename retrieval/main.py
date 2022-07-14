@@ -11,11 +11,11 @@ def main(args):
     # Seed everything
     seed_everything(args.seed, workers=True)
 
-    # Load dataset
-    data = MultiWOZ(args)
-
     # Load model
     model = Retriever(args)
+
+    # Load dataset
+    data = MultiWOZ(args, model.tokenizer)
 
     # Get Trainer
     trainer = Trainer.from_argparse_args(args)

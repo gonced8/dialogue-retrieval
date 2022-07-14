@@ -7,17 +7,20 @@ import pytorch_lightning as pl
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers import AutoTokenizer, AutoModel
+
+from .lcs import lcs_similarity
 
 
 class MultiWOZ(pl.LightningDataModule):
-    def __init__(self, args):
+    def __init__(self, args, tokenizer=None):
         super().__init__()
         self.seed = args.seed
         self.data_dir = args.data_dir
         self.total_batch_size = args.total_batch_size
         self.batch_size = args.batch_size
         self.num_workers = args.num_workers
+        self.annotations = ["domains", "acts", "slots", "values"]
+        self.tokenizer = tokenizer
 
     def prepare_data(self):
         # Get datasets filenames and check if files exist
@@ -56,7 +59,7 @@ class MultiWOZ(pl.LightningDataModule):
             self.train_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
-            collate_fn=self.collate_fn,
+            collate_fn=self.collate_fn_train,
             shuffle=True,
             pin_memory=bool(torch.cuda.device_count()),
         )
@@ -66,7 +69,7 @@ class MultiWOZ(pl.LightningDataModule):
             self.val_dataset,
             batch_size=self.val_batch_size,
             num_workers=self.num_workers,
-            collate_fn=self.collate_fn,
+            collate_fn=self.collate_fn_val,
             shuffle=False,
             pin_memory=bool(torch.cuda.device_count()),
         )
@@ -76,7 +79,7 @@ class MultiWOZ(pl.LightningDataModule):
             self.test_dataset,
             batch_size=self.test_batch_size,
             num_workers=self.num_workers,
-            collate_fn=self.collate_fn,
+            collate_fn=self.collate_fn_test,
             shuffle=False,
             pin_memory=bool(torch.cuda.device_count()),
         )
@@ -94,6 +97,39 @@ class MultiWOZ(pl.LightningDataModule):
         parser.add_argument("--test_batch_size", type=int, default=1)
         parser.add_argument("--num_workers", type=int, default=min(8, os.cpu_count()))
         return parent_parser
+
+    def collate_fn_train(self, batch):
+        # Get data
+        texts = [
+            [MultiWOZDataset.get_conversation(d) for d in sample["dialogues"]]
+            for sample in batch
+        ]
+        labels = [
+            lcs_similarity(
+                *[
+                    MultiWOZDataset.get_sequence(d, self.annotations, True)
+                    for d in sample["dialogues"]
+                ]
+            )
+            for sample in batch
+        ]
+
+        # Convert to tensors
+        sources = self.tokenizer(
+            [source for source, _ in texts],
+            padding=True,
+            truncation=True,
+            return_tensors="pt",
+        )
+        references = self.tokenizer(
+            [reference for _, reference in texts],
+            padding=True,
+            truncation=True,
+            return_tensors="pt",
+        )
+        labels = torch.tensor(labels)
+
+        return {"sources": sources, "references": references, "labels": labels}
 
 
 class RandomPairsDataset(torch.utils.data.Dataset):

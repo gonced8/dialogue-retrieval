@@ -1,8 +1,7 @@
 import pytorch_lightning as pl
-from sentence_transformers import SentenceTransformer
-from transformers.optimization import AdamW
-
+from sentence_transformers import losses, SentenceTransformer
 import torch.nn as nn
+from transformers.optimization import AdamW
 
 
 class Retriever(pl.LightningModule):
@@ -15,13 +14,13 @@ class Retriever(pl.LightningModule):
 
         # Initialize original model
         self.model = SentenceTransformer(self.original_model_name)
+        self.tokenizer = self.model.tokenizer
 
         # Loss
-        self.loss = nn.MSELoss(reduction="mean")
+        self.loss = losses.CosineSimilarityLoss(model=self.model)
 
     def training_step(self, batch, batch_idx):
-        print(batch)
-        input()
+        return self.loss([batch["sources"], batch["references"]], batch["labels"])
 
     # TODO randomize dataset with seed+epoch in the end of each epoch
 
