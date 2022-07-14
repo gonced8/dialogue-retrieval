@@ -16,7 +16,12 @@ class Trainer(pl.Trainer):
     @staticmethod
     def add_argparse_args(parent_parser):
         parser = parent_parser.add_argument_group("Trainer")
-        parser.add_argument("--mode", type=str, default="test", help="train or test")
+        parser.add_argument(
+            "--mode",
+            type=str,
+            default="test",
+            choices=["train", "test"],
+        )
         parser.add_argument("--lr", type=float, default=1e-3)
         parser.add_argument("--monitor", type=str, default="val_loss")
         parser.add_argument("--monitor_mode", type=str, default="min")

@@ -39,7 +39,7 @@ if __name__ == "__main__":
     parser = Retriever.add_argparse_args(parser)
     parser = Trainer.add_argparse_args(parser)
 
-    parser.add_argument("--seed", type=str, default=42, help="seed")
+    parser.add_argument("--seed", type=int, default=42, help="seed")
 
     args = parser.parse_args()
     main(args)
