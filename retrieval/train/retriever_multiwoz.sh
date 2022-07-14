@@ -5,6 +5,8 @@ args=(
 
     # Data
 	--total_batch_size 100000
+	--total_val_batch_size 1000
+	--total_test_batch_size 1000
     --batch_size 8
     --val_batch_size 1
     --test_batch_size 1
@@ -22,7 +24,7 @@ args=(
 	--default_root_dir checkpoints
     --monitor val_loss
 	--save_results
-    --fast_dev_run
+    #--fast_dev_run
 )
 
 echo "python main.py ${args[@]} $@"

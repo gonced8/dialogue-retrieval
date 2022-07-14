@@ -12,15 +12,19 @@ from .lcs import lcs_similarity
 
 
 class MultiWOZ(pl.LightningDataModule):
-    def __init__(self, args, tokenizer=None):
+    def __init__(self, args):
         super().__init__()
         self.seed = args.seed
         self.data_dir = args.data_dir
         self.total_batch_size = args.total_batch_size
+        self.total_val_batch_size = args.total_val_batch_size
+        self.total_test_batch_size = args.total_test_batch_size
         self.batch_size = args.batch_size
+        self.val_batch_size = args.val_batch_size
+        self.test_batch_size = args.test_batch_size
         self.num_workers = args.num_workers
         self.annotations = ["domains", "acts", "slots", "values"]
-        self.tokenizer = tokenizer
+        self.tokenizer = None
 
     def prepare_data(self):
         # Get datasets filenames and check if files exist
@@ -43,14 +47,14 @@ class MultiWOZ(pl.LightningDataModule):
             )
             self.val_dataset = MultiWOZDataset(
                 self.datasets_filenames["val"],
-                total_batch_size=self.total_batch_size,
+                total_batch_size=self.total_val_batch_size,
                 seed=self.seed + 0,
             )
 
         if stage in (None, "test"):
             self.val_dataset = MultiWOZDataset(
                 self.datasets_filenames["test"],
-                total_batch_size=total_batch_size,
+                total_batch_size=total_test_batch_size,
                 seed=self.seed + 0,
             )
 
@@ -59,7 +63,7 @@ class MultiWOZ(pl.LightningDataModule):
             self.train_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
-            collate_fn=self.collate_fn_train,
+            collate_fn=self.collate_fn_fit,
             shuffle=True,
             pin_memory=bool(torch.cuda.device_count()),
         )
@@ -69,7 +73,7 @@ class MultiWOZ(pl.LightningDataModule):
             self.val_dataset,
             batch_size=self.val_batch_size,
             num_workers=self.num_workers,
-            collate_fn=self.collate_fn_val,
+            collate_fn=self.collate_fn_fit,
             shuffle=False,
             pin_memory=bool(torch.cuda.device_count()),
         )
@@ -84,6 +88,10 @@ class MultiWOZ(pl.LightningDataModule):
             pin_memory=bool(torch.cuda.device_count()),
         )
 
+    def randomize(self, seed=None):
+        self.train_dataset.randomize(seed)
+        self.val_dataset.randomize(seed)
+
     @staticmethod
     def add_argparse_args(parent_parser):
         parser = parent_parser.add_argument_group("DataModule: MultiWOZ")
@@ -92,13 +100,15 @@ class MultiWOZ(pl.LightningDataModule):
             "--data_dir", type=str, default="../data/multiwoz/processed/"
         )
         parser.add_argument("--total_batch_size", type=int, default=100000)
+        parser.add_argument("--total_val_batch_size", type=int, default=1000)
+        parser.add_argument("--total_test_batch_size", type=int, default=1000)
         parser.add_argument("--batch_size", type=int, default=8)
         parser.add_argument("--val_batch_size", type=int, default=1)
         parser.add_argument("--test_batch_size", type=int, default=1)
         parser.add_argument("--num_workers", type=int, default=min(8, os.cpu_count()))
         return parent_parser
 
-    def collate_fn_train(self, batch):
+    def collate_fn_fit(self, batch):
         # Get data
         texts = [
             [MultiWOZDataset.get_conversation(d) for d in sample["dialogues"]]

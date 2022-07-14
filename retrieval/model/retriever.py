@@ -5,7 +5,7 @@ from transformers.optimization import AdamW
 
 
 class Retriever(pl.LightningModule):
-    def __init__(self, args):
+    def __init__(self, args, data):
         super().__init__()
         self.save_hyperparameters(args)
 
@@ -16,13 +16,39 @@ class Retriever(pl.LightningModule):
         self.model = SentenceTransformer(self.original_model_name)
         self.tokenizer = self.model.tokenizer
 
+        # Update data module
+        data.tokenizer = self.tokenizer
+        self.randomize = data.randomize
+        self.seed = data.seed
+
         # Loss
         self.loss = losses.CosineSimilarityLoss(model=self.model)
 
     def training_step(self, batch, batch_idx):
-        return self.loss([batch["sources"], batch["references"]], batch["labels"])
+        sources, references, labels = batch.values()
 
-    # TODO randomize dataset with seed+epoch in the end of each epoch
+        labels = 2 * labels - 1
+        loss = self.loss([sources, references], labels)
+
+        self.log("train_loss", loss)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        sources, references, labels = batch.values()
+
+        labels = 2 * labels - 1
+        loss = self.loss([sources, references], labels)
+
+        self.log("val_loss", loss, prog_bar=True)
+        return loss
+
+    def on_train_epoch_start(self):
+        # Print newline to save printed progress per epoch
+        print()
+
+        # Randomize dataset on every epoch
+        if self.current_epoch > 0:
+            self.randomize(self.seed + self.current_epoch)
 
     def configure_optimizers(self):
         optimizer = AdamW(self.parameters(), lr=self.hparams.lr)
