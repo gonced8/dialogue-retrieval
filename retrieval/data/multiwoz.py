@@ -109,6 +109,9 @@ class MultiWOZ(pl.LightningDataModule):
         return parent_parser
 
     def collate_fn_fit(self, batch):
+        # Get ids
+        ids = [sample["id"] for sample in batch]
+
         # Get data
         texts = [
             [MultiWOZDataset.get_conversation(d) for d in sample["dialogues"]]
@@ -139,7 +142,12 @@ class MultiWOZ(pl.LightningDataModule):
         )
         labels = torch.tensor(labels)
 
-        return {"sources": sources, "references": references, "labels": labels}
+        return {
+            "ids": ids,
+            "sources": sources,
+            "references": references,
+            "labels": labels,
+        }
 
 
 class RandomPairsDataset(torch.utils.data.Dataset):
@@ -193,6 +201,10 @@ class MultiWOZDataset(RandomPairsDataset):
     def __getitem__(self, idx):
         # Gets dialogue ids
         d_ids = super().__getitem__(idx)
+        sample_id = "+".join(
+            f"{d_id}_{start}-{end}"
+            for d_id, (start, end) in zip(d_ids, self.segments[idx])
+        )
 
         # Get dialogues and cut them according to randomized segment size
         dialogues = [
@@ -203,7 +215,7 @@ class MultiWOZDataset(RandomPairsDataset):
         # TODO extract ids, dialogues, extract sequences, measure similarity, convert to InputExamples
         # TODO avoid repeating this computations
 
-        return {"d_ids": d_ids, "dialogues": dialogues}
+        return {"id": sample_id, "dialogues": dialogues}
 
     def randomize(self, seed=None):
         super().randomize(seed)

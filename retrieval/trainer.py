@@ -25,7 +25,8 @@ class Trainer(pl.Trainer):
         parser.add_argument("--lr", type=float, default=1e-3)
         parser.add_argument("--monitor", type=str, default="val_loss")
         parser.add_argument("--monitor_mode", type=str, default="min")
-        parser.add_argument("--save_results", action="store_true")
+        parser.add_argument("--save_val", action="store_true")
+        parser.add_argument("--save_test", action="store_true")
 
         parent_parser = pl.Trainer.add_argparse_args(parent_parser)
 
@@ -34,7 +35,7 @@ class Trainer(pl.Trainer):
     @staticmethod
     def from_argparse_args(args):
         # Get folder name
-        name = f"{args.model_name}_{args.data_name}"
+        name = f"{args.model_name.lower()}_{args.data_name.lower()}"
 
         # Callbacks and Logger
         if args.enable_checkpointing:
