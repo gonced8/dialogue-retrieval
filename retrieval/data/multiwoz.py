@@ -92,6 +92,40 @@ class MultiWOZ(pl.LightningDataModule):
         self.train_dataset.randomize(seed)
         self.val_dataset.randomize(seed)
 
+    def collate_fn_fit(self, batch):
+        # Get ids
+        ids = [sample["id"] for sample in batch]
+
+        # Get data
+        texts = [
+            [MultiWOZDataset.get_conversation(d) for d in sample["dialogues"]]
+            for sample in batch
+        ]
+
+        labels = [sample["similarity"] for sample in batch]
+
+        # Convert to tensors
+        sources = self.tokenizer(
+            [source for source, _ in texts],
+            padding=True,
+            truncation=True,
+            return_tensors="pt",
+        )
+        references = self.tokenizer(
+            [reference for _, reference in texts],
+            padding=True,
+            truncation=True,
+            return_tensors="pt",
+        )
+        labels = torch.tensor(labels).view(-1, 1)
+
+        return {
+            "ids": ids,
+            "sources": sources,
+            "references": references,
+            "labels": labels,
+        }
+
     @staticmethod
     def add_argparse_args(parent_parser):
         parser = parent_parser.add_argument_group("DataModule: MultiWOZ")
@@ -107,47 +141,6 @@ class MultiWOZ(pl.LightningDataModule):
         parser.add_argument("--test_batch_size", type=int, default=1)
         parser.add_argument("--num_workers", type=int, default=min(8, os.cpu_count()))
         return parent_parser
-
-    def collate_fn_fit(self, batch):
-        # Get ids
-        ids = [sample["id"] for sample in batch]
-
-        # Get data
-        texts = [
-            [MultiWOZDataset.get_conversation(d) for d in sample["dialogues"]]
-            for sample in batch
-        ]
-        labels = [
-            lcs_similarity(
-                *[
-                    MultiWOZDataset.get_sequence(d, self.annotations, True)
-                    for d in sample["dialogues"]
-                ]
-            )
-            for sample in batch
-        ]
-
-        # Convert to tensors
-        sources = self.tokenizer(
-            [source for source, _ in texts],
-            padding=True,
-            truncation=True,
-            return_tensors="pt",
-        )
-        references = self.tokenizer(
-            [reference for _, reference in texts],
-            padding=True,
-            truncation=True,
-            return_tensors="pt",
-        )
-        labels = torch.tensor(labels)
-
-        return {
-            "ids": ids,
-            "sources": sources,
-            "references": references,
-            "labels": labels,
-        }
 
 
 class RandomPairsDataset(torch.utils.data.Dataset):
@@ -191,12 +184,24 @@ class RandomPairsDataset(torch.utils.data.Dataset):
 
 
 class MultiWOZDataset(RandomPairsDataset):
-    def __init__(self, filename, total_batch_size=1000, seed=None):
+    def __init__(
+        self,
+        filename,
+        annotations=["domains", "acts", "slots", "values"],
+        total_batch_size=1000,
+        seed=None,
+    ):
+        self.annotations = annotations
+        self.segments = None
+
         with open(filename, "r") as f:
             dataset = json.load(f)
 
         # Initialize dataset and randomize
         super().__init__(dataset, total_batch_size, seed)
+
+    def __len__(self):
+        return self.total_batch_size
 
     def __getitem__(self, idx):
         # Gets dialogue ids
@@ -212,10 +217,12 @@ class MultiWOZDataset(RandomPairsDataset):
             for d_id, (start, end) in zip(d_ids, self.segments[idx])
         ]
 
-        # TODO extract ids, dialogues, extract sequences, measure similarity, convert to InputExamples
-        # TODO avoid repeating this computations
+        # Compute similarity
+        similarity = lcs_similarity(
+            *[self.get_sequence(d, self.annotations, True) for d in dialogues]
+        )
 
-        return {"id": sample_id, "dialogues": dialogues}
+        return {"id": sample_id, "dialogues": dialogues, "similarity": similarity}
 
     def randomize(self, seed=None):
         super().randomize(seed)

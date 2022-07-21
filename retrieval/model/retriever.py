@@ -5,6 +5,7 @@ import pytorch_lightning as pl
 from sentence_transformers import losses, SentenceTransformer
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.optim import AdamW
 
 
@@ -18,6 +19,7 @@ class Retriever(pl.LightningModule):
 
         # Initialize original model
         self.model = SentenceTransformer(self.original_model_name)
+        self.fc = nn.Linear(1, 1)
         self.tokenizer = self.model.tokenizer
 
         # Update data module
@@ -26,14 +28,19 @@ class Retriever(pl.LightningModule):
         self.seed = data.seed
 
         # Loss
-        self.loss = losses.CosineSimilarityLoss(
-            model=self.model, cos_score_transformation=lambda x: (x + 1) * 0.5
-        )
+        self.loss = F.mse_loss
 
     def training_step(self, batch, batch_idx):
         ids, sources, references, labels = batch.values()
 
-        loss = self.loss([sources, references], labels)
+        embeddings = [
+            self.model(sentence_feature)["sentence_embedding"]
+            for sentence_feature in [sources, references]
+        ]
+        output = self.fc(
+            torch.cosine_similarity(embeddings[0], embeddings[1]).view(-1, 1)
+        )
+        loss = self.loss(output, labels)
 
         self.log("train_loss", loss)
         return loss
@@ -41,17 +48,14 @@ class Retriever(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         ids, sources, references, labels = batch.values()
 
-        if self.hparams.save_val:
-            embeddings = [
-                self.loss.model(sentence_feature)["sentence_embedding"]
-                for sentence_feature in [sources, references]
-            ]
-            output = self.loss.cos_score_transformation(
-                torch.cosine_similarity(embeddings[0], embeddings[1])
-            )
-            loss = self.loss.loss_fct(output, labels.view(-1))
-        else:
-            loss = self.loss([sources, references], labels)
+        embeddings = [
+            self.model(sentence_feature)["sentence_embedding"]
+            for sentence_feature in [sources, references]
+        ]
+        output = self.fc(
+            torch.cosine_similarity(embeddings[0], embeddings[1]).view(-1, 1)
+        )
+        loss = self.loss(output, labels)
 
         self.log("val_loss", loss, prog_bar=True)
 
@@ -67,6 +71,10 @@ class Retriever(pl.LightningModule):
         # Randomize dataset on every epoch
         if self.current_epoch > 0:
             self.randomize(self.seed + self.current_epoch)
+
+    def on_validation_epoch_end(self):
+        # Print newline to save printed progress after every validation
+        print()
 
     def validation_epoch_end(self, outputs):
         if self.hparams.save_val and not self.hparams.fast_dev_run:
