@@ -39,12 +39,14 @@ class MultiWOZ(pl.LightningDataModule):
         }
 
     def setup(self, stage=None):
-        if stage in (None, "fit"):
+        if stage in (None, "fit", "train"):
             self.train_dataset = MultiWOZDataset(
                 self.datasets_filenames["train"],
                 total_batch_size=self.total_batch_size,
                 seed=self.seed + 0,
             )
+
+        if stage in (None, "fit", "val"):
             self.val_dataset = MultiWOZDataset(
                 self.datasets_filenames["val"],
                 total_batch_size=self.total_val_batch_size,
