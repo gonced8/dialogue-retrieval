@@ -52,6 +52,8 @@ class Retriever(pl.LightningModule):
             self.model(sentence_feature)["sentence_embedding"]
             for sentence_feature in [sources, references]
         ]
+
+        print(embeddings[0].shape, embeddings[1].shape)
         output = self.fc(
             torch.cosine_similarity(embeddings[0], embeddings[1]).view(-1, 1)
         )
