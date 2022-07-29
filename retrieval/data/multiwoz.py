@@ -3,6 +3,8 @@ import math
 import os
 import random
 
+import joblib
+import numpy as np
 import pytorch_lightning as pl
 from sklearn.preprocessing import QuantileTransformer
 import torch
@@ -15,12 +17,9 @@ from .lcs import lcs_similarity
 class MultiWOZ(pl.LightningDataModule):
     def __init__(self, args):
         super().__init__()
-        self.hparams = args
+        self.save_hyperparameters(args)
         self.annotations = ["domains", "acts", "slots", "values"]
         self.tokenizer = None
-        if self.hparams.quantile_transformer:
-            qt = QuantileTransformer(n_quantiles=10, random_state=0)
-            self.transformation = 
 
     def prepare_data(self):
         # Get datasets filenames and check if files exist
@@ -35,10 +34,18 @@ class MultiWOZ(pl.LightningDataModule):
         }
 
     def setup(self, stage=None):
+        if self.hparams.transformation is not None and self.hparams.transformation:
+            print(f"Loading labels transformation from {self.hparams.transformation}")
+            qt = joblib.load(self.hparams.transformation)
+            transformation = lambda x: qt.transform(np.array(x).reshape(1, 1)).item()
+        else:
+            transformation = None
+
         if stage in (None, "fit", "train"):
             self.train_dataset = MultiWOZDataset(
                 self.datasets_filenames["train"],
                 total_batch_size=self.hparams.total_batch_size,
+                transformation=transformation,
                 seed=self.hparams.seed + 0,
             )
 
@@ -46,6 +53,7 @@ class MultiWOZ(pl.LightningDataModule):
             self.val_dataset = MultiWOZDataset(
                 self.datasets_filenames["val"],
                 total_batch_size=self.hparams.total_val_batch_size,
+                transformation=transformation,
                 seed=self.hparams.seed + 0,
             )
 
@@ -53,6 +61,7 @@ class MultiWOZ(pl.LightningDataModule):
             self.val_dataset = MultiWOZDataset(
                 self.datasets_filenames["test"],
                 total_batch_size=self.hparams.total_test_batch_size,
+                transformation=transformation,
                 seed=self.hparams.seed + 0,
             )
 
@@ -138,6 +147,7 @@ class MultiWOZ(pl.LightningDataModule):
         parser.add_argument("--val_batch_size", type=int, default=1)
         parser.add_argument("--test_batch_size", type=int, default=1)
         parser.add_argument("--num_workers", type=int, default=min(8, os.cpu_count()))
+        parser.add_argument("--transformation", type=str, default=None)
         return parent_parser
 
 

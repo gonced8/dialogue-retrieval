@@ -53,7 +53,7 @@ class Trainer(pl.Trainer):
                 EarlyStopping(
                     monitor=args.monitor,
                     mode="min",
-                    min_delta=1e-3,
+                    min_delta=1e-4,
                     patience=5,
                     strict=True,
                 )

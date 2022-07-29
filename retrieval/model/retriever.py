@@ -16,13 +16,12 @@ class Retriever(pl.LightningModule):
 
         # Initialize original model
         self.model = SentenceTransformer(self.original_model_name)
-        self.fc = nn.Linear(1, 1)
         self.tokenizer = self.model.tokenizer
 
         # Update data module
         data.tokenizer = self.tokenizer
         self.randomize = data.randomize
-        self.seed = data.seed
+        self.seed = data.hparams.seed
 
         # Loss
         self.loss = F.mse_loss
@@ -34,9 +33,8 @@ class Retriever(pl.LightningModule):
             self.model(sentence_feature)["sentence_embedding"]
             for sentence_feature in [sources, references]
         ]
-        output = self.fc(
-            torch.cosine_similarity(embeddings[0], embeddings[1]).view(-1, 1)
-        )
+        output = torch.cosine_similarity(embeddings[0], embeddings[1]).view(-1, 1)
+        output = F.relu(output)
         loss = self.loss(output, labels)
 
         self.log("train_loss", loss)
@@ -49,9 +47,8 @@ class Retriever(pl.LightningModule):
             self.model(sentence_feature)["sentence_embedding"]
             for sentence_feature in [sources, references]
         ]
-        output = self.fc(
-            torch.cosine_similarity(embeddings[0], embeddings[1]).view(-1, 1)
-        )
+        output = torch.cosine_similarity(embeddings[0], embeddings[1]).view(-1, 1)
+        output = F.relu(output)
         loss = self.loss(output, labels)
 
         self.log("val_loss", loss, prog_bar=True)
