@@ -4,6 +4,7 @@ import os
 import random
 
 import pytorch_lightning as pl
+from sklearn.preprocessing import QuantileTransformer
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -15,22 +16,16 @@ class MultiWOZ(pl.LightningDataModule):
     def __init__(self, args):
         super().__init__()
         self.save_hyperparameters(args)
-        self.seed = args.seed
-        self.data_dir = args.data_dir
-        self.total_batch_size = args.total_batch_size
-        self.total_val_batch_size = args.total_val_batch_size
-        self.total_test_batch_size = args.total_test_batch_size
-        self.batch_size = args.batch_size
-        self.val_batch_size = args.val_batch_size
-        self.test_batch_size = args.test_batch_size
-        self.num_workers = args.num_workers
         self.annotations = ["domains", "acts", "slots", "values"]
         self.tokenizer = None
+        if self.hparams.quantile_transformer:
+            qt = QuantileTransformer(n_quantiles=10, random_state=0)
+            self.transformation = 
 
     def prepare_data(self):
         # Get datasets filenames and check if files exist
         self.datasets_filenames = {
-            mode: os.path.join(self.data_dir, f"{mode}.json")
+            mode: os.path.join(self.hparams.data_dir, f"{mode}.json")
             for mode in ["train", "val", "test"]
         }
 
@@ -43,30 +38,30 @@ class MultiWOZ(pl.LightningDataModule):
         if stage in (None, "fit", "train"):
             self.train_dataset = MultiWOZDataset(
                 self.datasets_filenames["train"],
-                total_batch_size=self.total_batch_size,
-                seed=self.seed + 0,
+                total_batch_size=self.hparams.total_batch_size,
+                seed=self.hparams.seed + 0,
             )
 
         if stage in (None, "fit", "val"):
             self.val_dataset = MultiWOZDataset(
                 self.datasets_filenames["val"],
                 dialogues_per_sample=self.hparams.mrr_total + 1,
-                total_batch_size=self.total_val_batch_size,
-                seed=self.seed + 0,
+                total_batch_size=self.hparams.total_val_batch_size,
+                seed=self.hparams.seed + 0,
             )
 
         if stage in (None, "test"):
             self.val_dataset = MultiWOZDataset(
                 self.datasets_filenames["test"],
-                total_batch_size=total_test_batch_size,
-                seed=self.seed + 0,
+                total_batch_size=self.hparams.total_test_batch_size,
+                seed=self.hparams.seed + 0,
             )
 
     def train_dataloader(self):
         return DataLoader(
             self.train_dataset,
-            batch_size=self.batch_size,
-            num_workers=self.num_workers,
+            batch_size=self.hparams.batch_size,
+            num_workers=self.hparams.num_workers,
             collate_fn=self.collate_fn_fit,
             shuffle=True,
             pin_memory=bool(torch.cuda.device_count()),
@@ -75,8 +70,8 @@ class MultiWOZ(pl.LightningDataModule):
     def val_dataloader(self):
         return DataLoader(
             self.val_dataset,
-            batch_size=self.val_batch_size,
-            num_workers=self.num_workers,
+            batch_size=self.hparams.val_batch_size,
+            num_workers=self.hparams.num_workers,
             collate_fn=self.collate_fn_fit,
             shuffle=False,
             pin_memory=bool(torch.cuda.device_count()),
@@ -85,8 +80,8 @@ class MultiWOZ(pl.LightningDataModule):
     def test_dataloader(self):
         return DataLoader(
             self.test_dataset,
-            batch_size=self.test_batch_size,
-            num_workers=self.num_workers,
+            batch_size=self.hparams.test_batch_size,
+            num_workers=self.hparams.num_workers,
             collate_fn=self.collate_fn_test,
             shuffle=False,
             pin_memory=bool(torch.cuda.device_count()),
@@ -196,9 +191,11 @@ class MultiWOZDataset(RandomCombinationDataset):
         annotations=["domains", "acts", "slots", "values"],
         dialogues_per_sample=2,
         total_batch_size=1000,
+        transformation=None,
         seed=None,
     ):
         self.annotations = annotations
+        self.transformation = transformation
         self.segments = None
 
         with open(filename, "r") as f:
@@ -232,6 +229,10 @@ class MultiWOZDataset(RandomCombinationDataset):
             )
             for d in dialogues[1:]
         ]
+
+        # Apply label transformation
+        if self.transformation is not None:
+            similarity = self.transformation(similarity)
 
         return {"id": sample_id, "dialogues": dialogues, "similarity": similarity}
 

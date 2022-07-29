@@ -8,6 +8,8 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.plugins import DDPPlugin
 import torch
 
+from model import SaveExamples
+
 
 class Trainer(pl.Trainer):
     def __init__(self, *args, **kwargs):
@@ -61,6 +63,9 @@ class Trainer(pl.Trainer):
                 args.lr = None
             else:
                 callbacks += [LearningRateMonitor()]
+
+            if args.save_val:
+                callbacks += [SaveExamples()]
 
             logger = TensorBoardLogger(save_dir="checkpoints", name=name)
         else:

@@ -1,6 +1,3 @@
-import json
-import os
-
 import pytorch_lightning as pl
 from sentence_transformers import losses, SentenceTransformer
 import torch
@@ -79,39 +76,10 @@ class Retriever(pl.LightningModule):
         print()
 
     def validation_epoch_end(self, outputs):
-        if self.hparams.save_val and not self.hparams.fast_dev_run:
-            loss = torch.stack([step["loss"] for step in outputs]).mean()
-            data = [{"val_loss": loss.item()}]
-            data.extend(
-                [
-                    {"id": sample_id, "label": label.item(), "output": output.item()}
-                    for step in outputs
-                    for sample_id, label, output in zip(
-                        step["ids"],
-                        step["labels"],
-                        step["outputs"],
-                    )
-                ]
-            )
+        if isinstance(outputs[0], dict):
+            outputs = [step["loss"] for step in outputs]
 
-            # Round float numbers
-            data = [
-                {
-                    k: round(v, 4) if isinstance(v, float) else v
-                    for k, v in sample.items()
-                }
-                for sample in data
-            ]
-
-            # Save results to file
-            output_filename = os.path.join(
-                self.trainer.logger.log_dir, "results_val.json"
-            )
-
-            with open(output_filename, "w") as f:
-                json.dump(data, f, indent=4)
-        else:
-            loss = torch.stack(outputs)
+        loss = torch.stack(outputs).mean()
 
         self.log("val_loss", loss, prog_bar=True)
 
