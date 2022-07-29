@@ -52,6 +52,7 @@ class MultiWOZ(pl.LightningDataModule):
         if stage in (None, "fit", "val"):
             self.val_dataset = MultiWOZDataset(
                 self.datasets_filenames["val"],
+                dialogues_per_sample=self.hparams.mrr_total + 1,
                 total_batch_size=self.hparams.total_val_batch_size,
                 transformation=transformation,
                 seed=self.hparams.seed + 0,
@@ -113,18 +114,18 @@ class MultiWOZ(pl.LightningDataModule):
 
         # Convert to tensors
         sources = self.tokenizer(
-            [source for source, _ in texts],
+            [source for source, *_ in texts],
             padding=True,
             truncation=True,
             return_tensors="pt",
         )
         references = self.tokenizer(
-            [reference for _, reference in texts],
+            [reference for _, *reference in texts],
             padding=True,
             truncation=True,
             return_tensors="pt",
         )
-        labels = torch.tensor(labels).view(-1, 1)
+        labels = torch.tensor(labels).view(len(batch), -1)
 
         return {
             "ids": ids,
@@ -146,14 +147,16 @@ class MultiWOZ(pl.LightningDataModule):
         parser.add_argument("--batch_size", type=int, default=8)
         parser.add_argument("--val_batch_size", type=int, default=1)
         parser.add_argument("--test_batch_size", type=int, default=1)
+        parser.add_argument("--mrr_total", type=int, default=10)
         parser.add_argument("--num_workers", type=int, default=min(8, os.cpu_count()))
         parser.add_argument("--transformation", type=str, default=None)
         return parent_parser
 
 
-class RandomPairsDataset(torch.utils.data.Dataset):
-    def __init__(self, dataset, total_batch_size=1000, seed=None):
+class RandomCombinationDataset(torch.utils.data.Dataset):
+    def __init__(self, dataset, r, total_batch_size=1000, seed=None):
         self.dataset = dataset
+        self.r = r
         self.total_batch_size = total_batch_size
         self.samples = None
         self.randomize(seed)
@@ -170,7 +173,7 @@ class RandomPairsDataset(torch.utils.data.Dataset):
     def randomize(self, seed=None):
         self.samples = tuple(
             self.random_combinations(
-                self.dataset, 2, self.total_batch_size, repeat=True, seed=seed
+                self.dataset, self.r, self.total_batch_size, repeat=True, seed=seed
             )
         )
 
@@ -191,11 +194,12 @@ class RandomPairsDataset(torch.utils.data.Dataset):
             yield tuple(pool[i] for i in indices)
 
 
-class MultiWOZDataset(RandomPairsDataset):
+class MultiWOZDataset(RandomCombinationDataset):
     def __init__(
         self,
         filename,
         annotations=["domains", "acts", "slots", "values"],
+        dialogues_per_sample=2,
         total_batch_size=1000,
         transformation=None,
         seed=None,
@@ -208,7 +212,7 @@ class MultiWOZDataset(RandomPairsDataset):
             dataset = json.load(f)
 
         # Initialize dataset and randomize
-        super().__init__(dataset, total_batch_size, seed)
+        super().__init__(dataset, dialogues_per_sample, total_batch_size, seed)
 
     def __len__(self):
         return self.total_batch_size
@@ -216,7 +220,7 @@ class MultiWOZDataset(RandomPairsDataset):
     def __getitem__(self, idx):
         # Gets dialogue ids
         d_ids = super().__getitem__(idx)
-        sample_id = "+".join(
+        sample_id = "__".join(
             f"{d_id}_{start}-{end}"
             for d_id, (start, end) in zip(d_ids, self.segments[idx])
         )
@@ -228,9 +232,13 @@ class MultiWOZDataset(RandomPairsDataset):
         ]
 
         # Compute similarity
-        similarity = lcs_similarity(
-            *[self.get_sequence(d, self.annotations, True) for d in dialogues]
-        )
+        similarity = [
+            lcs_similarity(
+                self.get_sequence(dialogues[0], self.annotations, True),
+                self.get_sequence(d, self.annotations, True),
+            )
+            for d in dialogues[1:]
+        ]
 
         # Apply label transformation
         if self.transformation is not None:
@@ -324,7 +332,8 @@ if __name__ == "__main__":
 
     parser = ArgumentParser()
     parser = MultiWOZ.add_argparse_args(parser)
-    parser.add_argument("--seed", type=int, default=42, help="seed")
+    parser.add_argument("--mode", type=str, default="example")
+    parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
     data = MultiWOZ(args)
@@ -335,3 +344,7 @@ if __name__ == "__main__":
         dataset = data.train_dataset
         print(*dataset[0].items(), sep="\n")
         print(dataset.segments[0])
+
+    if args.mode == "validate":
+        dataset = data.val_dataset
+        print(dataset[0]["id"], dataset[0]["similarity"], sep="\n")
