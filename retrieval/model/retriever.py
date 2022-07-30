@@ -43,11 +43,18 @@ class Retriever(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         ids, sources, references, labels = batch.values()
 
-        embeddings = [
+        # Obtain sentence embeddings
+        sources_embeddings, references_embeddings = [
             self.model(sentence_feature)["sentence_embedding"]
             for sentence_feature in [sources, references]
         ]
-        print(embeddings[0].shape, embeddings[1].shape)
+
+        # Reshape references embeddings
+        references_embeddings = references_embeddings.view(
+            len(batch), -1, references_embeddings.size(-1)
+        )
+
+        # TODO
 
         output = torch.cosine_similarity(embeddings[0], embeddings[1]).view(-1, 1)
         output = F.relu(output)

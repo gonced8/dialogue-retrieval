@@ -22,7 +22,7 @@ class Trainer(pl.Trainer):
             "--mode",
             type=str,
             default="test",
-            choices=["train", "test"],
+            choices=["train", "test", "validate"],
         )
         parser.add_argument("--lr", type=float, default=1e-3)
         parser.add_argument("--monitor", type=str, default="val_loss")

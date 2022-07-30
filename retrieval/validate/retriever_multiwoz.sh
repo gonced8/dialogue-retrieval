@@ -2,7 +2,7 @@
 
 args=(
     #Model
-	--original_model_name sentence-transformers/all-mpnet-base-v2
+	--original_model_name sentence-transformers/all-MiniLM-L6-v2
 
     # Data
 	--total_batch_size 100000

@@ -2,7 +2,7 @@ from argparse import ArgumentParser
 
 from pytorch_lightning import seed_everything
 
-from data import MultiWOZ
+from data.multiwoz import MultiWOZ
 from model import Retriever
 from trainer import Trainer
 
@@ -27,6 +27,8 @@ def main(args):
     # Train or test
     if "train" in args.mode:
         trainer.fit(model, data)
+    elif "validate" in args.mode:
+        trainer.validate(model, data)
     elif "test" in args.mode:
         trainer.test(model, data, verbose=True)
     else:

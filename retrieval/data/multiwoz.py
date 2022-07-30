@@ -37,19 +37,20 @@ class MultiWOZ(pl.LightningDataModule):
         if self.hparams.transformation is not None and self.hparams.transformation:
             print(f"Loading labels transformation from {self.hparams.transformation}")
             qt = joblib.load(self.hparams.transformation)
-            transformation = lambda x: qt.transform(np.array(x).reshape(1, 1)).item()
+            transformation = lambda x: qt.transform(np.array(x).reshape(-1, 1)).item()
         else:
             transformation = None
 
         if stage in (None, "fit", "train"):
             self.train_dataset = MultiWOZDataset(
                 self.datasets_filenames["train"],
+                dialogues_per_sample=2,
                 total_batch_size=self.hparams.total_batch_size,
                 transformation=transformation,
                 seed=self.hparams.seed + 0,
             )
 
-        if stage in (None, "fit", "val"):
+        if stage in (None, "fit", "validate"):
             self.val_dataset = MultiWOZDataset(
                 self.datasets_filenames["val"],
                 dialogues_per_sample=self.hparams.mrr_total + 1,
@@ -61,6 +62,7 @@ class MultiWOZ(pl.LightningDataModule):
         if stage in (None, "test"):
             self.val_dataset = MultiWOZDataset(
                 self.datasets_filenames["test"],
+                dialogues_per_sample=self.hparams.mrr_total + 1,
                 total_batch_size=self.hparams.total_test_batch_size,
                 transformation=transformation,
                 seed=self.hparams.seed + 0,
@@ -119,12 +121,14 @@ class MultiWOZ(pl.LightningDataModule):
             truncation=True,
             return_tensors="pt",
         )
+
         references = self.tokenizer(
-            [reference for _, *reference in texts],
+            [r for _, *references in texts for r in references],
             padding=True,
             truncation=True,
             return_tensors="pt",
         )
+
         labels = torch.tensor(labels).view(len(batch), -1)
 
         return {
