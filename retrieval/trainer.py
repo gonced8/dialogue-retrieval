@@ -40,7 +40,7 @@ class Trainer(pl.Trainer):
         name = f"{args.model_name.lower()}_{args.data_name.lower()}"
 
         # Callbacks and Logger
-        if args.enable_checkpointing:
+        if args.enable_checkpointing and not args.fast_dev_run:
             callbacks = []
 
             callbacks += [

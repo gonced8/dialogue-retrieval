@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import AdamW
+from torchmetrics.functional import retrieval_normalized_dcg, retrieval_reciprocal_rank
 
 
 class Retriever(pl.LightningModule):
@@ -49,24 +50,32 @@ class Retriever(pl.LightningModule):
             for sentence_feature in [sources, references]
         ]
 
-        # Reshape references embeddings
+        # Reshape embeddings
+        batch_size = sources_embeddings.size(0)
+        dialogues_per_sample = references_embeddings.size(0) // batch_size
+        sources_embeddings = sources_embeddings.unsqueeze(1).expand(
+            -1, dialogues_per_sample, -1
+        )
         references_embeddings = references_embeddings.view(
-            len(batch), -1, references_embeddings.size(-1)
+            batch_size, dialogues_per_sample, -1
         )
 
-        # TODO
-
-        output = torch.cosine_similarity(embeddings[0], embeddings[1]).view(-1, 1)
+        output = torch.cosine_similarity(
+            sources_embeddings, references_embeddings, dim=-1
+        )
         output = F.relu(output)
 
-        loss = self.loss(output, labels)
-
-        self.log("val_loss", loss, prog_bar=True)
+        mrr = retrieval_reciprocal_rank(
+            output, labels.ge(labels.max(-1, keepdim=True)[0])
+        )
+        ndcg = retrieval_normalized_dcg(output, labels)
+        metrics = {"mrr": mrr, "ndcg": ndcg}
+        self.log_dict(metrics, prog_bar=True, batch_size=batch_size)
 
         if self.hparams.save_val and not self.hparams.fast_dev_run:
-            return {"ids": ids, "labels": labels, "outputs": output, "loss": loss}
+            return {"ids": ids, "labels": labels, "outputs": output, "metrics": metrics}
         else:
-            return loss
+            return {"metrics": metrics}
 
     def on_train_epoch_start(self):
         # Print newline to save printed progress per epoch
@@ -81,12 +90,12 @@ class Retriever(pl.LightningModule):
         print()
 
     def validation_epoch_end(self, outputs):
-        if isinstance(outputs[0], dict):
-            outputs = [step["loss"] for step in outputs]
+        metrics = {
+            m: torch.stack([step["metrics"][m] for step in outputs]).mean()
+            for m in outputs[0]["metrics"]
+        }
 
-        loss = torch.stack(outputs).mean()
-
-        self.log("val_loss", loss, prog_bar=True)
+        self.log_dict(metrics, prog_bar=True)
 
     def configure_optimizers(self):
         optimizer = AdamW(self.parameters(), lr=self.hparams.lr)

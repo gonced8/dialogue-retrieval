@@ -37,7 +37,7 @@ class MultiWOZ(pl.LightningDataModule):
         if self.hparams.transformation is not None and self.hparams.transformation:
             print(f"Loading labels transformation from {self.hparams.transformation}")
             qt = joblib.load(self.hparams.transformation)
-            transformation = lambda x: qt.transform(np.array(x).reshape(-1, 1)).item()
+            transformation = lambda x: qt.transform(np.array(x).reshape(-1, 1)).tolist()
         else:
             transformation = None
 

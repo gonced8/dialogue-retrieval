@@ -13,6 +13,7 @@ args=(
     --test_batch_size 1
 	--mrr_total 10
     --num_workers 8
+	--transformation data/quantile_transformer.joblib
 
     # Trainer
     --mode validate
@@ -27,7 +28,7 @@ args=(
     --monitor val_loss
 	--save_val
 	--save_test
-    --fast_dev_run
+    #--fast_dev_run
 )
 
 echo "python main.py ${args[@]} $@"
