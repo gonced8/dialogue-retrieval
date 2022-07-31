@@ -110,5 +110,4 @@ class Retriever(pl.LightningModule):
             type=str,
             default="sentence-transformers/all-mpnet-base-v2",
         )
-        parser.add_argument("--from_checkpoint", type=str, default="")
         return parent_parser

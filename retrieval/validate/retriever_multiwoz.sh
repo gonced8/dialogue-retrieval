@@ -2,7 +2,8 @@
 
 args=(
     #Model
-	--original_model_name sentence-transformers/all-MiniLM-L6-v2
+	#--original_model_name sentence-transformers/all-MiniLM-L6-v2
+	--original_model_name sentence-transformers/all-mpnet-base-v2
 
     # Data
 	--total_batch_size 100000
@@ -28,6 +29,7 @@ args=(
     --monitor val_loss
 	--save_val
 	--save_test
+	--ckpt_path checkpoints/retriever_multiwoz/version_0/checkpoints/best.ckpt
     #--fast_dev_run
 )
 

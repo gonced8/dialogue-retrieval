@@ -29,6 +29,9 @@ class Trainer(pl.Trainer):
         parser.add_argument("--monitor_mode", type=str, default="min")
         parser.add_argument("--save_val", action="store_true")
         parser.add_argument("--save_test", action="store_true")
+        parser.add_argument(
+            "--ckpt_path", type=str, default=None, help="Checkpoint path"
+        )
 
         parent_parser = pl.Trainer.add_argparse_args(parent_parser)
 

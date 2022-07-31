@@ -20,17 +20,13 @@ def main(args):
     # Get Trainer
     trainer = Trainer.from_argparse_args(args)
 
-    # Load from checkpoint
-    if args.from_checkpoint:
-        raise NotImplementedError
-
     # Train or test
     if "train" in args.mode:
-        trainer.fit(model, data)
+        trainer.fit(model, data, ckpt_path=args.ckpt_path)
     elif "validate" in args.mode:
-        trainer.validate(model, data)
+        trainer.validate(model, data, ckpt_path=args.ckpt_path)
     elif "test" in args.mode:
-        trainer.test(model, data, verbose=True)
+        trainer.test(model, data, ckpt_path=args.ckpt_path, verbose=True)
     else:
         print(f"Unrecognized mode: {args.mode}")
 

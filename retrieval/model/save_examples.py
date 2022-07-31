@@ -16,12 +16,12 @@ class SaveExamples(Callback):
     def on_validation_epoch_end(self, trainer, pl_module):
         metrics = {
             m: torch.stack([step["metrics"][m] for step in self.val_outs]).mean()
-            for m in outputs[0]["metrics"]
+            for m in self.val_outs[0]["metrics"]
         }
         data = [{k: v.item() for k, v in metrics.items()}]
         data.extend(
             [
-                {"id": sample_id, "label": label.item(), "output": output.item()}
+                {"id": sample_id, "label": label.tolist(), "output": output.tolist()}
                 for step in self.val_outs
                 for sample_id, label, output in zip(
                     step["ids"],
