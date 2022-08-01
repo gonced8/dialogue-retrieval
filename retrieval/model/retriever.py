@@ -30,12 +30,30 @@ class Retriever(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         ids, sources, references, labels = batch.values()
 
-        embeddings = [
+        sources_embeddings, references_embeddings = [
             self.model(sentence_feature)["sentence_embedding"]
             for sentence_feature in [sources, references]
         ]
-        output = torch.cosine_similarity(embeddings[0], embeddings[1]).view(-1, 1)
+
+        # Reshape embeddings
+        dialogues_per_sample = references_embeddings.size(0) // batch_size
+
+        if dialogues_per_sample > 1:
+            batch_size = sources_embeddings.size(0)
+            sources_embeddings = sources_embeddings.unsqueeze(1).expand(
+                -1, dialogues_per_sample, -1
+            )
+            references_embeddings = references_embeddings.view(
+                batch_size, dialogues_per_sample, -1
+            )
+
+        # Similarity
+        output = torch.cosine_similarity(
+            sources_embeddings, references_embeddings, dim=-1
+        )
         output = F.relu(output)
+
+        # Loss
         loss = self.loss(output, labels)
 
         self.log("train_loss", loss)
@@ -51,15 +69,18 @@ class Retriever(pl.LightningModule):
         ]
 
         # Reshape embeddings
-        batch_size = sources_embeddings.size(0)
         dialogues_per_sample = references_embeddings.size(0) // batch_size
-        sources_embeddings = sources_embeddings.unsqueeze(1).expand(
-            -1, dialogues_per_sample, -1
-        )
-        references_embeddings = references_embeddings.view(
-            batch_size, dialogues_per_sample, -1
-        )
 
+        if dialogues_per_sample > 1:
+            batch_size = sources_embeddings.size(0)
+            sources_embeddings = sources_embeddings.unsqueeze(1).expand(
+                -1, dialogues_per_sample, -1
+            )
+            references_embeddings = references_embeddings.view(
+                batch_size, dialogues_per_sample, -1
+            )
+
+        # Similarity
         output = torch.cosine_similarity(
             sources_embeddings, references_embeddings, dim=-1
         )
