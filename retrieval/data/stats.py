@@ -6,8 +6,8 @@ from transformers import AutoTokenizer, AutoModel
 from .lcs import *
 from .multiwoz import *
 
-SAVE = True
-SHOW = False
+SAVE = False
+SHOW = True
 
 
 def scatter_hist(x, y, xlabel=None, ylabel=None):

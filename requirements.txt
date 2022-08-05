@@ -7,4 +7,5 @@ sentence-transformers==2.2.2
 scikit-learn
 streamlit==1.11.0
 torch==1.12.0
+torchmetrics
 transformers==4.20.1
