@@ -29,7 +29,7 @@ args=(
     --monitor val_loss
 	--save_val
 	--save_test
-	--ckpt_path checkpoints/retriever_multiwoz/version_0/checkpoints/best.ckpt
+	#--ckpt_path checkpoints/retriever_multiwoz/version_0/checkpoints/best.ckpt
     #--fast_dev_run
 )
 

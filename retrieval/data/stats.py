@@ -3,7 +3,7 @@ import numpy as np
 
 from transformers import AutoTokenizer, AutoModel
 
-from .lcs import *
+from utils.lcs import *
 from .multiwoz import *
 
 SAVE = False

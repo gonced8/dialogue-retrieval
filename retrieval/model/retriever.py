@@ -27,6 +27,9 @@ class Retriever(pl.LightningModule):
         # Loss
         self.loss = F.mse_loss
 
+        # Metric
+        self.minmax_ndcg = MinMax_NDCG()
+
     def training_step(self, batch, batch_idx):
         ids, sources, references, labels = batch.values()
 
@@ -69,6 +72,7 @@ class Retriever(pl.LightningModule):
         ]
 
         # Reshape embeddings
+        batch_size = len(ids)
         dialogues_per_sample = references_embeddings.size(0) // batch_size
 
         if dialogues_per_sample > 1:
@@ -89,8 +93,8 @@ class Retriever(pl.LightningModule):
         mrr = retrieval_reciprocal_rank(
             output, labels.ge(labels.max(-1, keepdim=True)[0])
         )
-        ndcg = retrieval_normalized_dcg(output, labels)
-        metrics = {"mrr": mrr, "ndcg": ndcg}
+        ndcg = self.minmax_ndcg(output, labels)
+        metrics = {"mrr": mrr, "minmax_ndcg": ndcg}
         self.log_dict(metrics, prog_bar=True, batch_size=batch_size)
 
         if self.hparams.save_val and not self.hparams.fast_dev_run:

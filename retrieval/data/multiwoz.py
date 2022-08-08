@@ -11,7 +11,7 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from .lcs import lcs_similarity
+from utils.lcs import lcs_similarity
 
 
 class MultiWOZ(pl.LightningDataModule):
