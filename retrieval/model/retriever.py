@@ -4,7 +4,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import AdamW
-from torchmetrics.functional import retrieval_normalized_dcg, retrieval_reciprocal_rank
+from torchmetrics.functional import retrieval_reciprocal_rank
+
+from utils.minmax_ndcg import *
 
 
 class Retriever(pl.LightningModule):
@@ -26,9 +28,6 @@ class Retriever(pl.LightningModule):
 
         # Loss
         self.loss = F.mse_loss
-
-        # Metric
-        self.minmax_ndcg = MinMax_NDCG()
 
     def training_step(self, batch, batch_idx):
         ids, sources, references, labels = batch.values()
@@ -93,8 +92,8 @@ class Retriever(pl.LightningModule):
         mrr = retrieval_reciprocal_rank(
             output, labels.ge(labels.max(-1, keepdim=True)[0])
         )
-        ndcg = self.minmax_ndcg(output, labels)
-        metrics = {"mrr": mrr, "minmax_ndcg": ndcg}
+        score = minmax_ndcg(output, labels)
+        metrics = {"mrr": mrr, "minmax_ndcg": score}
         self.log_dict(metrics, prog_bar=True, batch_size=batch_size)
 
         if self.hparams.save_val and not self.hparams.fast_dev_run:

@@ -53,7 +53,7 @@ class MultiWOZ(pl.LightningDataModule):
         if stage in (None, "fit", "validate"):
             self.val_dataset = MultiWOZDataset(
                 self.datasets_filenames["val"],
-                dialogues_per_sample=self.hparams.mrr_total + 1,
+                dialogues_per_sample=self.hparams.candidates + 1,
                 total_batch_size=self.hparams.total_val_batch_size,
                 transformation=transformation,
                 seed=self.hparams.seed + 0,
@@ -62,7 +62,7 @@ class MultiWOZ(pl.LightningDataModule):
         if stage in (None, "test"):
             self.val_dataset = MultiWOZDataset(
                 self.datasets_filenames["test"],
-                dialogues_per_sample=self.hparams.mrr_total + 1,
+                dialogues_per_sample=self.hparams.candidates + 1,
                 total_batch_size=self.hparams.total_test_batch_size,
                 transformation=transformation,
                 seed=self.hparams.seed + 0,
@@ -151,7 +151,7 @@ class MultiWOZ(pl.LightningDataModule):
         parser.add_argument("--batch_size", type=int, default=8)
         parser.add_argument("--val_batch_size", type=int, default=1)
         parser.add_argument("--test_batch_size", type=int, default=1)
-        parser.add_argument("--mrr_total", type=int, default=10)
+        parser.add_argument("--candidates", type=int, default=10)
         parser.add_argument("--num_workers", type=int, default=min(8, os.cpu_count()))
         parser.add_argument("--transformation", type=str, default=None)
         return parent_parser

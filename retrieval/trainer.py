@@ -11,6 +11,12 @@ import torch
 from model import SaveExamples
 
 
+def none_or_str(value):
+    if value == "None":
+        return None
+    return value
+
+
 class Trainer(pl.Trainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -30,7 +36,7 @@ class Trainer(pl.Trainer):
         parser.add_argument("--save_val", action="store_true")
         parser.add_argument("--save_test", action="store_true")
         parser.add_argument(
-            "--ckpt_path", type=str, default=None, help="Checkpoint path"
+            "--ckpt_path", type=none_or_str, default=None, help="Checkpoint path"
         )
 
         parent_parser = pl.Trainer.add_argparse_args(parent_parser)
