@@ -1,5 +1,6 @@
 --extra-index-url https://download.pytorch.org/whl/cu113
 
+autofaiss==2.15.0
 matplotlib==3.5.2
 numpy
 pytorch-lightning==1.6.5

@@ -1,5 +1,5 @@
 import pytorch_lightning as pl
-from sentence_transformers import losses, SentenceTransformer
+from sentence_transformers import SentenceTransformer
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,24 +10,32 @@ from utils.minmax_ndcg import *
 
 
 class Retriever(pl.LightningModule):
-    def __init__(self, args, data):
+    def __init__(self, args, data=None):
         super().__init__()
         self.save_hyperparameters(args)
 
-        self.model_name = args.model_name
-        self.original_model_name = args.original_model_name
+        try:
+            self.model_name = self.hparams.model_name
+        except AttributeError:
+            self.model_name = self.hparams.original_model_name
 
         # Initialize original model
-        self.model = SentenceTransformer(self.original_model_name)
+        self.model = SentenceTransformer(self.hparams.original_model_name)
         self.tokenizer = self.model.tokenizer
 
         # Update data module
-        data.tokenizer = self.tokenizer
-        self.randomize = data.randomize
-        self.seed = data.hparams.seed
+        if data is not None:
+            data.tokenizer = self.tokenizer
+            self.randomize = data.randomize
+            self.seed = data.hparams.seed
+        else:
+            self.seed = args.seed
 
         # Loss
         self.loss = F.mse_loss
+
+    def forward(self, x):
+        return self.model(x)["sentence_embedding"]
 
     def training_step(self, batch, batch_idx):
         ids, sources, references, labels = batch.values()
