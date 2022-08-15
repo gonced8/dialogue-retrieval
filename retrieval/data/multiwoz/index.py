@@ -13,11 +13,12 @@ from pytorch_lightning import seed_everything
 import torch
 from tqdm import tqdm
 
-from data.multiwoz import MultiWOZDataset
+from data.multiwoz import MultiWOZ
 from model import Retriever
 
 
 def process_dataset(dataset, seed=None):
+    random.seed(seed)
     new_dataset = []
 
     for d_id, dialogue in tqdm(dataset.items(), desc="Processing the dataset"):
@@ -46,12 +47,8 @@ class CollateFn:
         ids = [sample["id"] for sample in batch]
 
         # Get data
-        contexts = [
-            MultiWOZDataset.get_conversation(sample["context"]) for sample in batch
-        ]
-        answers = [
-            MultiWOZDataset.get_conversation(sample["answer"]) for sample in batch
-        ]
+        contexts = [MultiWOZ.get_conversation(sample["context"]) for sample in batch]
+        answers = [MultiWOZ.get_conversation(sample["answer"]) for sample in batch]
 
         # Tokenize and convert to tensors
         context_tokenized = self.tokenizer(
@@ -184,7 +181,7 @@ def test(args):
 
     # Read index
     index_folder = Path(args.index_folder)
-    index = read_index(str(index_folder / "index"))
+    index = read_index(str(index_folder / "index.bin"))
     with open(index_folder / "ids_labels.json", "r") as f:
         ids_labels = list(json.load(f).values())
 
@@ -228,8 +225,8 @@ SYSTEM: It departs at 9 am.
 
     results = [
         f"""{idx}: {ids_labels[idx]}\tscore: {distance}
-{MultiWOZDataset.get_conversation(new_dataset[idx]["context"])}
-{MultiWOZDataset.get_conversation(new_dataset[idx]["answer"])}"""
+{MultiWOZ.get_conversation(new_dataset[idx]["context"])}
+{MultiWOZ.get_conversation(new_dataset[idx]["answer"])}"""
         for idx, distance in zip(indices[0], distances[0])
     ]
 
@@ -240,7 +237,7 @@ SYSTEM: It departs at 9 am.
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument(
-        "--filename", type=str, default="../data/multiwoz/processed/val.json"
+        "--filename", type=str, default="../data/multiwoz/processed/test.json"
     )
     parser.add_argument(
         "--original_model_name",
@@ -250,7 +247,7 @@ if __name__ == "__main__":
     parser.add_argument("--ckpt_path", type=str, default=None)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--num_workers", type=int, default=min(8, os.cpu_count()))
-    parser.add_argument("--index_folder", type=str, default="data/index/")
+    parser.add_argument("--index_folder", type=str, default="data/multiwoz/index/")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 

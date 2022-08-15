@@ -1,11 +1,13 @@
 #!/bin/bash
 
 args=(
-    #Model
+    # Model
+	--model_name retriever
 	#--original_model_name sentence-transformers/all-MiniLM-L6-v2
 	--original_model_name sentence-transformers/all-mpnet-base-v2
 
     # Data
+	--data_name multiwoz_combination
 	--total_val_batch_size 1000
     --val_batch_size 1
 	--candidates 100

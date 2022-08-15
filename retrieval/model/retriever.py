@@ -136,7 +136,6 @@ class Retriever(pl.LightningModule):
     @staticmethod
     def add_argparse_args(parent_parser):
         parser = parent_parser.add_argument_group("Module: Retriever")
-        parser.add_argument("--model_name", type=str, default="Retriever")
         parser.add_argument(
             "--original_model_name",
             type=str,

@@ -8,7 +8,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.plugins import DDPPlugin
 import torch
 
-from model import SaveExamples
+from model.save_examples import SaveExamples
 
 
 def none_or_str(value):
@@ -24,6 +24,8 @@ class Trainer(pl.Trainer):
     @staticmethod
     def add_argparse_args(parent_parser):
         parser = parent_parser.add_argument_group("Trainer")
+        parser.add_argument("--data_name", type=str)
+        parser.add_argument("--model_name", type=str)
         parser.add_argument(
             "--mode",
             type=str,

@@ -1,4 +1,3 @@
-import json
 import math
 import os
 import random
@@ -8,13 +7,13 @@ import numpy as np
 import pytorch_lightning as pl
 from sklearn.preprocessing import QuantileTransformer
 import torch
-from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from data.multiwoz import MultiWOZ
 from utils.lcs import lcs_similarity
 
 
-class MultiWOZ(pl.LightningDataModule):
+class MultiWOZCombinationDataModule(pl.LightningDataModule):
     def __init__(self, args):
         super().__init__()
         self.save_hyperparameters(args)
@@ -42,7 +41,7 @@ class MultiWOZ(pl.LightningDataModule):
             transformation = None
 
         if stage in (None, "fit", "train"):
-            self.train_dataset = MultiWOZDataset(
+            self.train_dataset = MultiWOZCombinationDataset(
                 self.datasets_filenames["train"],
                 dialogues_per_sample=2,
                 total_batch_size=self.hparams.total_batch_size,
@@ -51,7 +50,7 @@ class MultiWOZ(pl.LightningDataModule):
             )
 
         if stage in (None, "fit", "validate"):
-            self.val_dataset = MultiWOZDataset(
+            self.val_dataset = MultiWOZCombinationDataset(
                 self.datasets_filenames["val"],
                 dialogues_per_sample=self.hparams.candidates + 1,
                 total_batch_size=self.hparams.total_val_batch_size,
@@ -60,7 +59,7 @@ class MultiWOZ(pl.LightningDataModule):
             )
 
         if stage in (None, "test"):
-            self.val_dataset = MultiWOZDataset(
+            self.test_dataset = MultiWOZCombinationDataset(
                 self.datasets_filenames["test"],
                 dialogues_per_sample=self.hparams.candidates + 1,
                 total_batch_size=self.hparams.total_test_batch_size,
@@ -69,7 +68,7 @@ class MultiWOZ(pl.LightningDataModule):
             )
 
     def train_dataloader(self):
-        return DataLoader(
+        return torch.utils.DataLoader(
             self.train_dataset,
             batch_size=self.hparams.batch_size,
             num_workers=self.hparams.num_workers,
@@ -79,7 +78,7 @@ class MultiWOZ(pl.LightningDataModule):
         )
 
     def val_dataloader(self):
-        return DataLoader(
+        return torch.utils.DataLoader(
             self.val_dataset,
             batch_size=self.hparams.val_batch_size,
             num_workers=self.hparams.num_workers,
@@ -89,7 +88,7 @@ class MultiWOZ(pl.LightningDataModule):
         )
 
     def test_dataloader(self):
-        return DataLoader(
+        return torch.utils.DataLoader(
             self.test_dataset,
             batch_size=self.hparams.test_batch_size,
             num_workers=self.hparams.num_workers,
@@ -108,7 +107,7 @@ class MultiWOZ(pl.LightningDataModule):
 
         # Get data
         texts = [
-            [MultiWOZDataset.get_conversation(d) for d in sample["dialogues"]]
+            [MultiWOZ.get_conversation(d) for d in sample["dialogues"]]
             for sample in batch
         ]
 
@@ -140,8 +139,7 @@ class MultiWOZ(pl.LightningDataModule):
 
     @staticmethod
     def add_argparse_args(parent_parser):
-        parser = parent_parser.add_argument_group("DataModule: MultiWOZ")
-        parser.add_argument("--data_name", type=str, default="multiwoz")
+        parser = parent_parser.add_argument_group("DataModule: MultiWOZCombination")
         parser.add_argument(
             "--data_dir", type=str, default="../data/multiwoz/processed/"
         )
@@ -164,6 +162,8 @@ class RandomCombinationDataset(torch.utils.data.Dataset):
         self.total_batch_size = total_batch_size
         self.samples = None
         self.randomize(seed)
+
+        super().__init__()
 
     def __getitem__(self, idx):
         return self.samples[idx]
@@ -198,7 +198,7 @@ class RandomCombinationDataset(torch.utils.data.Dataset):
             yield tuple(pool[i] for i in indices)
 
 
-class MultiWOZDataset(RandomCombinationDataset):
+class MultiWOZCombinationDataset(MultiWOZ, RandomCombinationDataset):
     def __init__(
         self,
         filename,
@@ -212,18 +212,18 @@ class MultiWOZDataset(RandomCombinationDataset):
         self.transformation = transformation
         self.segments = None
 
-        with open(filename, "r") as f:
-            dataset = json.load(f)
-
         # Initialize dataset and randomize
-        super().__init__(dataset, dialogues_per_sample, total_batch_size, seed)
+        MultiWOZ.__init__(self, filename)
+        RandomCombinationDataset.__init__(
+            self, self.dataset, dialogues_per_sample, total_batch_size, seed
+        )
 
     def __len__(self):
         return self.total_batch_size
 
     def __getitem__(self, idx):
         # Gets dialogue ids
-        d_ids = super().__getitem__(idx)
+        d_ids = RandomCombinationDataset.__getitem__(idx)
         sample_id = "__".join(
             f"{d_id}_{start}-{end}"
             for d_id, (start, end) in zip(d_ids, self.segments[idx])
@@ -251,7 +251,7 @@ class MultiWOZDataset(RandomCombinationDataset):
         return {"id": sample_id, "dialogues": dialogues, "similarity": similarity}
 
     def randomize(self, seed=None):
-        super().randomize(seed)
+        RandomCombinationDataset.randomize(seed)
         self.segments = self.random_segments(seed)
 
     def random_segments(self, seed=None):
@@ -269,78 +269,17 @@ class MultiWOZDataset(RandomCombinationDataset):
             )
         ]
 
-    @staticmethod
-    def get_conversation(dialogue, speaker=True):
-        return "\n".join(
-            (f"{turn['speaker']+': ':>8}" if speaker else "") + turn["utterance"]
-            for turn in dialogue
-        )
-
-    @staticmethod
-    def get_sequence(dialogue, annotations, flatten=False):
-        sequence = []
-
-        # Loop through turns
-        for turn in dialogue:
-            subsequence = []
-
-            # Loop through dialogue acts
-            for dialogue_act, slots_dict in turn["dialogue_acts"].items():
-                domain, dialogue_act = dialogue_act.split("-")
-
-                # Special case where there is no slots/values or we don't want them
-                if not slots_dict or not (
-                    "slots" in annotations or "values" in annotations
-                ):
-                    slots_dict = {None: None}
-
-                # Loop through slots and values
-                for slot, value in slots_dict.items():
-                    element = []
-
-                    if "domains" in annotations:
-                        element.append(domain)
-                    if "acts" in annotations:
-                        element.append(dialogue_act)
-                    if "slots" in annotations and slot is not None:
-                        element.append(slot)
-                    if "values" in annotations and value is not None:
-                        element.append(value)
-
-                    if element:
-                        subsequence.append(tuple(element))
-
-            if subsequence:
-                sequence.append(subsequence)
-
-        # Flatten sequence
-        if flatten == "concatenate":
-            sequence = [
-                "".join(x.title().replace(" ", "") for x in element)
-                for subsequence in sequence
-                for element in subsequence
-            ]
-        elif flatten:
-            sequence = [
-                x
-                for subsequence in sequence
-                for element in subsequence
-                for x in element
-            ]
-
-        return sequence
-
 
 if __name__ == "__main__":
     from argparse import ArgumentParser
 
     parser = ArgumentParser()
-    parser = MultiWOZ.add_argparse_args(parser)
+    parser = MultiWOZCombinationDataModule.add_argparse_args(parser)
     parser.add_argument("--mode", type=str, default="example")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    data = MultiWOZ(args)
+    data = MultiWOZCombinationDataModule(args)
     data.prepare_data()
     data.setup("fit")
 

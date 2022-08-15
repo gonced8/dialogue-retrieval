@@ -2,8 +2,8 @@ from argparse import ArgumentParser
 
 from pytorch_lightning import seed_everything
 
-from data.multiwoz import MultiWOZ
-from model import Retriever
+from data import get_data
+from model import get_model
 from trainer import Trainer
 
 
@@ -12,10 +12,10 @@ def main(args):
     seed_everything(args.seed, workers=True)
 
     # Load dataset
-    data = MultiWOZ(args)
+    data = get_data(args.data_name)(args)
 
     # Load model
-    model = Retriever(args, data)
+    model = get_model(args.model_name)(args, data)
 
     # Get Trainer
     trainer = Trainer.from_argparse_args(args)
@@ -33,9 +33,11 @@ def main(args):
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser = MultiWOZ.add_argparse_args(parser)
-    parser = Retriever.add_argparse_args(parser)
     parser = Trainer.add_argparse_args(parser)
+    args = parser.parse_known_args()[0]
+
+    parser = get_data(args.data_name).add_argparse_args(parser)
+    parser = get_model(args.model_name).add_argparse_args(parser)
 
     parser.add_argument("--seed", type=int, default=42, help="seed")
 
