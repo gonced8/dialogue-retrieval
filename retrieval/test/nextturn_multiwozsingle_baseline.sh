@@ -8,13 +8,13 @@ args=(
 	--enable_checkpointing
 	--default_root_dir checkpoints
 	#--save_val
-	--ckpt_path checkpoints/retriever_multiwoz/version_2/checkpoints/best.ckpt
+	#--ckpt_path checkpoints/retriever_multiwoz/version_2/checkpoints/best.ckpt
     #--fast_dev_run
 
     # Model
 	#--original_model_name sentence-transformers/all-MiniLM-L6-v2
 	--original_model_name sentence-transformers/all-mpnet-base-v2
-	--index_directory data/multiwoz/index
+	--index_directory data/multiwoz/index_baseline
 	--k 10
 
     # Data

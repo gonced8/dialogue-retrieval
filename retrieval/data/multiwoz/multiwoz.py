@@ -21,6 +21,8 @@ class MultiWOZ:
 
     @staticmethod
     def get_conversation(dialogue, speaker=True):
+        if isinstance(dialogue, dict):
+            dialogue = [dialogue]
         return "\n".join(
             (f"{turn['speaker']+': ':>8}" if speaker else "") + turn["utterance"]
             for turn in dialogue

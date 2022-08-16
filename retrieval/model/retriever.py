@@ -35,7 +35,9 @@ class Retriever(pl.LightningModule):
         self.loss = F.mse_loss
 
     def forward(self, x):
-        return self.model(x)["sentence_embedding"]
+        out = self.model(x)["sentence_embedding"]
+        # Normalize embeddings because of cosine similarity
+        return torch.nn.functional.normalize(out, dim=1)
 
     def training_step(self, batch, batch_idx):
         ids, sources, references, labels = batch.values()

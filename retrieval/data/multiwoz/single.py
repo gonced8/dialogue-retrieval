@@ -152,7 +152,7 @@ class MultiWOZSingleDataset(MultiWOZ, torch.utils.data.Dataset):
 
         # Get conversation as text
         context = self.get_conversation(context)
-        answer = self.get_conversation([answer])
+        answer = self.get_conversation(answer, speaker=False)
 
         return {
             "id": f"{d_id}_{start}-{end}",

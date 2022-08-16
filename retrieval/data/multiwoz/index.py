@@ -14,7 +14,7 @@ import torch
 from tqdm import tqdm
 
 from data.multiwoz import MultiWOZ
-from model import Retriever
+from model.retriever import Retriever
 
 
 def process_dataset(dataset, seed=None):
@@ -68,7 +68,7 @@ class CollateFn:
 
 def compute_embeddings(args):
     # Initialize embeddings directory
-    embeddings_dir = Path(args.index_folder) / "embeddings"
+    embeddings_dir = Path(args.index_directory) / "embeddings"
     if embeddings_dir.exists():
         print(f"Directory {embeddings_dir} already exists and contains:")
         print(*sorted(list(embeddings_dir.iterdir())), sep="\n")
@@ -92,6 +92,7 @@ def compute_embeddings(args):
 
     if args.ckpt_path is not None:
         model = Retriever.load_from_checkpoint(args.ckpt_path, args=args)
+        print(f"Loaded model from checkpoint: {args.ckpt_path}")
     else:
         model = Retriever(args)
 
@@ -121,9 +122,6 @@ def compute_embeddings(args):
             # Compute dialogue embeddings
             embeddings = model(x)
 
-            # Normalize embeddings because of cosine similarity
-            embeddings = torch.nn.functional.normalize(embeddings, dim=1)
-
             # Save embeddings to disk
             with open(embeddings_dir / f"{batch_idx}.npy", "wb") as f:
                 np.save(f, embeddings.cpu().numpy())
@@ -140,9 +138,9 @@ def compute_embeddings(args):
 
 def generate_index(args):
     # Check if index already exists
-    index_folder = Path(args.index_folder)
-    if (index_folder / "index").exists():
-        print(f"Index at {index_folder} already exists.")
+    index_directory = Path(args.index_directory)
+    if (index_directory / "index.bin").exists():
+        print(f"Index at {index_directory} already exists.")
         option = input("Do you want to regenerate the index? [y/N] ")
         if option == "" or option.lower() == "n":
             return
@@ -151,24 +149,24 @@ def generate_index(args):
     current_memory_available = f"{psutil.virtual_memory().available * 2**-30:.0f}G"
 
     build_index(
-        embeddings=str(index_folder / "embeddings"),
-        index_path=str(index_folder / "index"),
-        index_infos_path=str(index_folder / "info.json"),
+        embeddings=str(index_directory / "embeddings"),
+        index_path=str(index_directory / "index.bin"),
+        index_infos_path=str(index_directory / "info.json"),
         max_index_memory_usage="32G",
         current_memory_available=current_memory_available,
         metric_type="ip",
     )
 
     # Generate file with correspondence between ids
-    with open(index_folder / "embeddings" / "batch_ids.json", "r") as f:
+    with open(index_directory / "embeddings" / "batch_ids.json", "r") as f:
         batch_ids = json.load(f)
 
     ids_labels = dict(enumerate([l for labels in batch_ids.values() for l in labels]))
 
-    with open(index_folder / "ids_labels.json", "w") as f:
+    with open(index_directory / "ids_labels.json", "w") as f:
         json.dump(ids_labels, f, indent=4)
 
-    print(f"Built index to {index_folder}")
+    print(f"Built index to {index_directory}")
 
 
 def test(args):
@@ -180,9 +178,9 @@ def test(args):
     new_dataset = process_dataset(dataset)
 
     # Read index
-    index_folder = Path(args.index_folder)
-    index = read_index(str(index_folder / "index.bin"))
-    with open(index_folder / "ids_labels.json", "r") as f:
+    index_directory = Path(args.index_directory)
+    index = read_index(str(index_directory / "index.bin"))
+    with open(index_directory / "ids_labels.json", "r") as f:
         ids_labels = list(json.load(f).values())
 
     # Load model
@@ -247,7 +245,7 @@ if __name__ == "__main__":
     parser.add_argument("--ckpt_path", type=str, default=None)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--num_workers", type=int, default=min(8, os.cpu_count()))
-    parser.add_argument("--index_folder", type=str, default="data/multiwoz/index/")
+    parser.add_argument("--index_directory", type=str, default="data/multiwoz/index/")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
