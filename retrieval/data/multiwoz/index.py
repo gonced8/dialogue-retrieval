@@ -15,6 +15,7 @@ from tqdm import tqdm
 
 from data.multiwoz import MultiWOZ
 from model.retriever import Retriever
+from utils import none_or_str
 
 
 def process_dataset(dataset, seed=None):
@@ -214,8 +215,8 @@ SYSTEM: It departs at 9 am.
     with torch.no_grad():
         embeddings = model(x)
 
-    # Normalize embeddings because of cosine similarity
-    embeddings = torch.nn.functional.normalize(embeddings, dim=1)
+        # Normalize embeddings because of cosine similarity
+        embeddings = torch.nn.functional.normalize(embeddings, dim=1)
 
     # Search
     k = 5
@@ -242,10 +243,10 @@ if __name__ == "__main__":
         type=str,
         default="sentence-transformers/all-mpnet-base-v2",
     )
-    parser.add_argument("--ckpt_path", type=str, default=None)
+    parser.add_argument("--ckpt_path", type=none_or_str, default=None)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--num_workers", type=int, default=min(8, os.cpu_count()))
-    parser.add_argument("--index_directory", type=str, default="data/multiwoz/index/")
+    parser.add_argument("--index_directory", type=str)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 

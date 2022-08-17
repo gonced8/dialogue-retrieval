@@ -9,12 +9,7 @@ from pytorch_lightning.plugins import DDPPlugin
 import torch
 
 from model.save_examples import SaveExamples
-
-
-def none_or_str(value):
-    if value == "None":
-        return None
-    return value
+from utils import none_or_str
 
 
 class Trainer(pl.Trainer):
@@ -48,7 +43,7 @@ class Trainer(pl.Trainer):
     @staticmethod
     def from_argparse_args(args):
         # Get folder name
-        name = f"{args.model_name.lower()}_{args.data_name.lower()}"
+        name = f"{args.model_name.lower().replace('_', '')}_{args.data_name.lower().replace('_', '')}"
 
         # Callbacks and Logger
         if args.enable_checkpointing and not args.fast_dev_run:

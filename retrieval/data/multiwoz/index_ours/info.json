@@ -1,1 +1,0 @@
-{"index_key": "HNSW15", "index_param": "efSearch=16383", "index_path": "/home/gecr/dialogue-retrieval/retrieval/data/multiwoz/index_ours/index.bin", "size in bytes": 3208150, "avg_search_speed_ms": 3.643041218747385, "99p_search_speed_ms": 11.383326583309096, "reconstruction error %": 0.0, "nb vectors": 1000, "vectors dimension": 768, "compression ratio": 0.9575612112899958}

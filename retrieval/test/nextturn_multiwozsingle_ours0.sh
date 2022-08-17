@@ -7,13 +7,12 @@ args=(
     --mode test
 	--enable_checkpointing
 	#--save_val
-	#--ckpt_path checkpoints/retriever_multiwoz/version_2/checkpoints/best.ckpt
+	--ckpt_path checkpoints/retriever_multiwozcombination/version_0/checkpoints/best.ckpt
     #--fast_dev_run
 
     # Model
-	#--original_model_name sentence-transformers/all-MiniLM-L6-v2
 	--original_model_name sentence-transformers/all-mpnet-base-v2
-	--index_directory data/multiwoz/index/baseline
+	--index_directory data/multiwoz/index/ours0
 	--k 10
 
     # Data

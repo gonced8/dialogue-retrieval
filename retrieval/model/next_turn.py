@@ -119,10 +119,10 @@ class NextTurn(pl.LightningModule):
         self.rouge["answers"].add_batch(
             predictions=retrieved_answers, references=truth_answers
         )
-        lcs_score = sum(
+        lcs_score = [
             lcs_similarity(X, Y)
             for X, Y in zip(truth_annotations, retrieved_annotations)
-        ) / len(truth_annotations)
+        ]
 
         return {"lcs_score": lcs_score}
 
@@ -136,7 +136,9 @@ class NextTurn(pl.LightningModule):
 
         lcs_score = {
             "lcs_score": round(
-                sum([results["lcs_score"] for results in outputs]) / len(outputs), 4
+                sum(sum(results["lcs_score"]) for results in outputs)
+                / sum(len(results["lcs_score"]) for results in outputs),
+                4,
             )
         }
         self.log_dict(lcs_score, prog_bar=True)

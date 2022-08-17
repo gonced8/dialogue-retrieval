@@ -1,6 +1,6 @@
 data/multiwoz/*/
 checkpoints/
-*.npy
+retrieval/data/multiwoz/index/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
