@@ -113,10 +113,10 @@ class NextTurn(pl.LightningModule):
 
         # Compute metrics
         (
-            rouge_answer_rouge1,
-            rouge_answer_rouge2,
-            rouge_answer_rougeL,
-            rouge_answer_rougeLsum,
+            answer_rouge1,
+            answer_rouge2,
+            answer_rougeL,
+            answer_rougeLsum,
         ) = compute_rouge(
             metric=self.rouge,
             predictions=retrieved_answers,
@@ -125,10 +125,10 @@ class NextTurn(pl.LightningModule):
         )
 
         (
-            rouge_dialogue_rouge1,
-            rouge_dialogue_rouge2,
-            rouge_dialogue_rougeL,
-            rouge_dialogue_rougeLsum,
+            dialogue_rouge1,
+            dialogue_rouge2,
+            dialogue_rougeL,
+            dialogue_rougeLsum,
         ) = compute_rouge(
             metric=self.rouge,
             predictions=retrieved_dialogues,
@@ -142,12 +142,12 @@ class NextTurn(pl.LightningModule):
         ]
 
         metrics = {
-            "rouge_answer_rouge1": rouge_answer_rouge1,
-            "rouge_answer_rouge2": rouge_answer_rouge2,
-            "rouge_answer_rougeL": rouge_answer_rougeL,
-            "rouge_dialogue_rouge1": rouge_dialogue_rouge1,
-            "rouge_dialogue_rouge2": rouge_dialogue_rouge2,
-            "rouge_dialogue_rougeL": rouge_dialogue_rougeL,
+            "answer_rouge1": answer_rouge1,
+            "answer_rouge2": answer_rouge2,
+            "answer_rougeL": answer_rougeL,
+            "dialogue_rouge1": dialogue_rouge1,
+            "dialogue_rouge2": dialogue_rouge2,
+            "dialogue_rougeL": dialogue_rougeL,
             "lcs_score": lcs_score,
         }
 

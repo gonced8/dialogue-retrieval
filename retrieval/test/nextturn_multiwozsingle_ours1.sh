@@ -6,7 +6,7 @@ args=(
 	--model_name next_turn
     --mode test
 	--enable_checkpointing
-	#--save_val
+	--save_examples
 	--ckpt_path checkpoints/retriever_multiwozcombination/version_1/checkpoints/best.ckpt
     #--fast_dev_run
 
