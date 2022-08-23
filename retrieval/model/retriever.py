@@ -106,7 +106,7 @@ class Retriever(pl.LightningModule):
         metrics = {"mrr": mrr, "minmax_ndcg": score}
         self.log_dict(metrics, prog_bar=True, batch_size=batch_size)
 
-        if self.hparams.save_val and not self.hparams.fast_dev_run:
+        if self.hparams.save_examples and not self.hparams.fast_dev_run:
             return {"ids": ids, "labels": labels, "outputs": output, "metrics": metrics}
         else:
             return {"metrics": metrics}

@@ -18,7 +18,7 @@ args=(
     --mode validate
 	--enable_checkpointing
 	--default_root_dir checkpoints
-	--save_val
+	--save_examples
 	--ckpt_path checkpoints/retriever_multiwoz/version_2/checkpoints/best.ckpt
     #--fast_dev_run
 )

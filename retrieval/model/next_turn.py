@@ -1,5 +1,7 @@
+import itertools
 import json
 from pathlib import Path
+from statistics import mean
 
 from datasets import load_metric
 import faiss  # , faiss.contrib.torch_utils
@@ -11,7 +13,7 @@ import torch.nn.functional as F
 from torch.optim import AdamW
 
 from data.multiwoz import MultiWOZ
-from utils import parse_rouge_score
+from utils import compute_rouge
 from utils.lcs import lcs_similarity
 
 
@@ -45,10 +47,7 @@ class NextTurn(pl.LightningModule):
             self.seed = args.seed
 
         # Metrics
-        self.rouge = {
-            "dialogues": load_metric("rouge"),
-            "answers": load_metric("rouge"),
-        }
+        self.rouge = load_metric("rouge")
 
     def forward(self, x):
         # Compute embeddings and normalize (because of cosine simlarity)
@@ -113,35 +112,71 @@ class NextTurn(pl.LightningModule):
         # input()
 
         # Compute metrics
-        self.rouge["dialogues"].add_batch(
-            predictions=retrieved_dialogues, references=truth_dialogues
+        (
+            rouge_answer_rouge1,
+            rouge_answer_rouge2,
+            rouge_answer_rougeL,
+            rouge_answer_rougeLsum,
+        ) = compute_rouge(
+            metric=self.rouge,
+            predictions=retrieved_answers,
+            references=truth_answers,
+            mode="precision",
         )
-        self.rouge["answers"].add_batch(
-            predictions=retrieved_answers, references=truth_answers
+
+        (
+            rouge_dialogue_rouge1,
+            rouge_dialogue_rouge2,
+            rouge_dialogue_rougeL,
+            rouge_dialogue_rougeLsum,
+        ) = compute_rouge(
+            metric=self.rouge,
+            predictions=retrieved_dialogues,
+            references=truth_dialogues,
+            mode="precision",
         )
+
         lcs_score = [
             lcs_similarity(X, Y)
             for X, Y in zip(truth_annotations, retrieved_annotations)
         ]
 
-        return {"lcs_score": lcs_score}
+        metrics = {
+            "rouge_answer_rouge1": rouge_answer_rouge1,
+            "rouge_answer_rouge2": rouge_answer_rouge2,
+            "rouge_answer_rougeL": rouge_answer_rougeL,
+            "rouge_dialogue_rouge1": rouge_dialogue_rouge1,
+            "rouge_dialogue_rouge2": rouge_dialogue_rouge2,
+            "rouge_dialogue_rougeL": rouge_dialogue_rougeL,
+            "lcs_score": lcs_score,
+        }
+
+        # Return results
+        if self.hparams.save_examples and not self.hparams.fast_dev_run:
+            return {
+                "ids": batch["ids"],
+                "metrics": metrics,
+                "truth": truth_dialogues,
+                "retrieved": retrieved_dialogues,
+            }
+        else:
+            return {"metrics": metrics}
 
     def test_epoch_end(self, outputs):
-        rouge_score = {}
-        for k, v in self.rouge.items():
-            score = v.compute()
-            score = parse_rouge_score(score, "precision")
-            rouge_score[k] = score
-        self.log_dict(rouge_score, prog_bar=True)
-
-        lcs_score = {
-            "lcs_score": round(
-                sum(sum(results["lcs_score"]) for results in outputs)
-                / sum(len(results["lcs_score"]) for results in outputs),
-                4,
+        # Stacks outputs
+        metrics = {
+            m: list(
+                itertools.chain.from_iterable(step["metrics"][m] for step in outputs)
             )
+            for m in outputs[0]["metrics"]
         }
-        self.log_dict(lcs_score, prog_bar=True)
+
+        # Average metrics and round
+        digits = 4
+        average = {
+            metric: round(mean(values), digits) for metric, values in metrics.items()
+        }
+        self.log_dict(average, prog_bar=True)
 
     @staticmethod
     def add_argparse_args(parent_parser):

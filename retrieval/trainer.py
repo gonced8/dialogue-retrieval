@@ -30,8 +30,7 @@ class Trainer(pl.Trainer):
         parser.add_argument("--lr", type=float, default=1e-3)
         parser.add_argument("--monitor", type=str, default="val_loss")
         parser.add_argument("--monitor_mode", type=str, default="min")
-        parser.add_argument("--save_val", action="store_true")
-        parser.add_argument("--save_test", action="store_true")
+        parser.add_argument("--save_examples", action="store_true")
         parser.add_argument(
             "--ckpt_path", type=none_or_str, default=None, help="Checkpoint path"
         )
@@ -70,7 +69,7 @@ class Trainer(pl.Trainer):
             else:
                 callbacks += [LearningRateMonitor()]
 
-            if args.save_val:
+            if args.save_examples:
                 callbacks += [SaveExamples()]
 
             logger = TensorBoardLogger(save_dir="checkpoints", name=name)
