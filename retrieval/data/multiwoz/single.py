@@ -137,6 +137,18 @@ class MultiWOZSingleDataset(MultiWOZ, torch.utils.data.Dataset):
         MultiWOZ.__init__(self, filename=filename)
         torch.utils.data.Dataset.__init__(self)
 
+        #TODO: nturns
+        # Filter conversations smaller than 4 turns
+        old_size = len(self.dataset)
+        self.dataset = {
+            k: v for k, v in self.dataset.items() if len(v) >= 4
+        }
+        new_size = len(self.dataset)
+        if old_size != new_size:
+            print(
+                f"Before filtering conversations smaller than 4 turns: {old_size}\nAfter filtering out: {new_size}"
+            )
+
         self.randomize(seed)
 
     def __getitem__(self, idx):
@@ -170,10 +182,11 @@ class MultiWOZSingleDataset(MultiWOZ, torch.utils.data.Dataset):
         for d_id, dialogue in tqdm(
             self.dataset.items(), desc="Generating random segments for each dialogue"
         ):
+            #TODO: min_nturns
             end = random.randrange(
-                1 if dialogue[1]["speaker"] == "SYSTEM" else 2, len(dialogue), 2
+                3 if dialogue[1]["speaker"] == "SYSTEM" else 4, len(dialogue), 2
             )
-            start = random.randrange(0, end)
+            start = random.randrange(0, (end+1-(4-1)))
 
             segments.append((start, end))
 

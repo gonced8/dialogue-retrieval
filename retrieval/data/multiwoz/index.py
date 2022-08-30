@@ -18,15 +18,17 @@ from model.retriever import Retriever
 from utils import none_or_str
 
 
-def process_dataset(dataset, seed=None):
+def process_dataset(dataset, min_nturns, seed=None):
     random.seed(seed)
     new_dataset = []
 
     for d_id, dialogue in tqdm(dataset.items(), desc="Processing the dataset"):
         end = random.randrange(
-            1 if dialogue[1]["speaker"] == "SYSTEM" else 2, len(dialogue), 2
+            min_nturns - 1 if dialogue[1]["speaker"] == "SYSTEM" else min_nturns,
+            len(dialogue),
+            2,
         )
-        start = random.randrange(0, end)
+        start = random.randrange(0, (end + 1) - (min_nturns - 1))
 
         new_dataset.append(
             {
@@ -84,8 +86,17 @@ def compute_embeddings(args):
     with open(args.filename, "r") as f:
         dataset = json.load(f)
 
+    # Filter dialogues with less than min_nturns turns
+    old_size = len(dataset)
+    dataset = {k: v for k, v in dataset.items() if len(v) >= args.min_nturns}
+    new_size = len(dataset)
+    if old_size != new_size:
+        print(
+            f"Before filtering conversations smaller than 4 turns: {old_size}\nAfter filtering out: {new_size}"
+        )
+
     # Process dataset
-    new_dataset = process_dataset(dataset)
+    new_dataset = process_dataset(dataset, args.min_nturns)
 
     # Load model
     use_cuda = torch.cuda.is_available()
@@ -175,8 +186,17 @@ def test(args):
     with open(args.filename, "r") as f:
         dataset = json.load(f)
 
+    # Filter dialogues with less than min_nturns turns
+    old_size = len(dataset)
+    dataset = {k: v for k, v in dataset.items() if len(v) >= args.min_nturns}
+    new_size = len(dataset)
+    if old_size != new_size:
+        print(
+            f"Before filtering conversations smaller than 4 turns: {old_size}\nAfter filtering out: {new_size}"
+        )
+
     # Process dataset
-    new_dataset = process_dataset(dataset)
+    dataset = process_dataset(dataset, args.min_nturns)
 
     # Read index
     index_directory = Path(args.index_directory)
@@ -224,8 +244,8 @@ SYSTEM: It departs at 9 am.
 
     results = [
         f"""{idx}: {ids_labels[idx]}\tscore: {distance}
-{MultiWOZ.get_conversation(new_dataset[idx]["context"])}
-{MultiWOZ.get_conversation(new_dataset[idx]["answer"])}"""
+{MultiWOZ.get_conversation(dataset[idx]["context"])}
+{MultiWOZ.get_conversation(dataset[idx]["answer"])}"""
         for idx, distance in zip(indices[0], distances[0])
     ]
 
@@ -245,6 +265,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--ckpt_path", type=none_or_str, default=None)
     parser.add_argument("--batch_size", type=int, default=64)
+    parser.add_argument("--min_nturns", type=int, default=4)
     parser.add_argument("--num_workers", type=int, default=min(8, os.cpu_count()))
     parser.add_argument("--index_directory", type=str)
     parser.add_argument("--seed", type=int, default=42)

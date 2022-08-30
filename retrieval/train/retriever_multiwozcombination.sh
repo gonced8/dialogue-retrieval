@@ -18,7 +18,7 @@ args=(
 
     # Trainer
     --mode train
-    --lr 1e-5
+    --lr 1e-6
     --accumulate_grad_batches 16
     --max_epochs 20
 	--check_val_every_n_epoch 1
@@ -27,8 +27,8 @@ args=(
 	--enable_checkpointing
 	--default_root_dir checkpoints
     --monitor val_loss
-	--save_val
-	--save_test
+	--monitor_mode min
+	--save_examples
     #--fast_dev_run
 )
 

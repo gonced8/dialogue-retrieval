@@ -48,6 +48,7 @@ class Retriever(pl.LightningModule):
         ]
 
         # Reshape embeddings
+        batch_size = len(ids)
         dialogues_per_sample = references_embeddings.size(0) // batch_size
 
         if dialogues_per_sample > 1:
@@ -62,7 +63,7 @@ class Retriever(pl.LightningModule):
         # Similarity
         output = torch.cosine_similarity(
             sources_embeddings, references_embeddings, dim=-1
-        )
+        ).unsqueeze(-1)
         output = F.relu(output)
 
         # Loss
@@ -98,6 +99,12 @@ class Retriever(pl.LightningModule):
             sources_embeddings, references_embeddings, dim=-1
         )
         output = F.relu(output)
+
+        # Loss
+        flatten_output = output.view(-1, 1)
+        flatten_labels = labels.view(-1, 1)
+        loss = self.loss(flatten_output, flatten_labels)
+        self.log("val_loss", loss, batch_size=torch.numel(labels), prog_bar=True)
 
         mrr = retrieval_reciprocal_rank(
             output, labels.ge(labels.max(-1, keepdim=True)[0])

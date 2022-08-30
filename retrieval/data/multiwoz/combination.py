@@ -44,6 +44,7 @@ class MultiWOZCombinationDataModule(pl.LightningDataModule):
             self.train_dataset = MultiWOZCombinationDataset(
                 self.datasets_filenames["train"],
                 dialogues_per_sample=2,
+                min_nturns=4,
                 total_batch_size=self.hparams.total_batch_size,
                 transformation=transformation,
                 seed=self.hparams.seed + 0,
@@ -53,6 +54,7 @@ class MultiWOZCombinationDataModule(pl.LightningDataModule):
             self.val_dataset = MultiWOZCombinationDataset(
                 self.datasets_filenames["val"],
                 dialogues_per_sample=self.hparams.candidates + 1,
+                min_nturns=4,
                 total_batch_size=self.hparams.total_val_batch_size,
                 transformation=transformation,
                 seed=self.hparams.seed + 0,
@@ -62,13 +64,14 @@ class MultiWOZCombinationDataModule(pl.LightningDataModule):
             self.test_dataset = MultiWOZCombinationDataset(
                 self.datasets_filenames["test"],
                 dialogues_per_sample=self.hparams.candidates + 1,
+                min_nturns=4,
                 total_batch_size=self.hparams.total_test_batch_size,
                 transformation=transformation,
                 seed=self.hparams.seed + 0,
             )
 
     def train_dataloader(self):
-        return torch.utils.DataLoader(
+        return torch.utils.data.DataLoader(
             self.train_dataset,
             batch_size=self.hparams.batch_size,
             num_workers=self.hparams.num_workers,
@@ -78,7 +81,7 @@ class MultiWOZCombinationDataModule(pl.LightningDataModule):
         )
 
     def val_dataloader(self):
-        return torch.utils.DataLoader(
+        return torch.utils.data.DataLoader(
             self.val_dataset,
             batch_size=self.hparams.val_batch_size,
             num_workers=self.hparams.num_workers,
@@ -88,7 +91,7 @@ class MultiWOZCombinationDataModule(pl.LightningDataModule):
         )
 
     def test_dataloader(self):
-        return torch.utils.DataLoader(
+        return torch.utils.data.DataLoader(
             self.test_dataset,
             batch_size=self.hparams.test_batch_size,
             num_workers=self.hparams.num_workers,
@@ -105,9 +108,9 @@ class MultiWOZCombinationDataModule(pl.LightningDataModule):
         # Get ids
         ids = [sample["id"] for sample in batch]
 
-        # Get data
+        # Get data (excluding last system's turn)
         texts = [
-            [MultiWOZ.get_conversation(d) for d in sample["dialogues"]]
+            [MultiWOZ.get_conversation(d[:-1]) for d in sample["dialogues"]]
             for sample in batch
         ]
 
@@ -204,18 +207,37 @@ class MultiWOZCombinationDataset(MultiWOZ, RandomCombinationDataset):
         filename,
         annotations=["domains", "acts", "slots", "values"],
         dialogues_per_sample=2,
+        min_nturns=4,
         total_batch_size=1000,
         transformation=None,
         seed=None,
     ):
         self.annotations = annotations
+        self.min_nturns = min_nturns
         self.transformation = transformation
         self.segments = None
 
-        # Initialize dataset and randomize
+        # Initialize dataset
         MultiWOZ.__init__(self, filename)
+
+        # Filter conversations smaller than 4 turns
+        old_size = len(self.dataset)
+        self.dataset = {
+            k: v for k, v in self.dataset.items() if len(v) >= self.min_nturns
+        }
+        new_size = len(self.dataset)
+        if old_size != new_size:
+            print(
+                f"Before filtering conversations smaller than 4 turns: {old_size}\nAfter filtering out: {new_size}"
+            )
+
+        # Sample pairs
         RandomCombinationDataset.__init__(
-            self, self.dataset, dialogues_per_sample, total_batch_size, seed
+            self,
+            dataset=self.dataset,
+            r=dialogues_per_sample,
+            total_batch_size=total_batch_size,
+            seed=seed,
         )
 
     def __len__(self):
@@ -223,7 +245,7 @@ class MultiWOZCombinationDataset(MultiWOZ, RandomCombinationDataset):
 
     def __getitem__(self, idx):
         # Gets dialogue ids
-        d_ids = RandomCombinationDataset.__getitem__(idx)
+        d_ids = RandomCombinationDataset.__getitem__(self, idx)
         sample_id = "__".join(
             f"{d_id}_{start}-{end}"
             for d_id, (start, end) in zip(d_ids, self.segments[idx])
@@ -251,23 +273,40 @@ class MultiWOZCombinationDataset(MultiWOZ, RandomCombinationDataset):
         return {"id": sample_id, "dialogues": dialogues, "similarity": similarity}
 
     def randomize(self, seed=None):
-        RandomCombinationDataset.randomize(seed)
+        RandomCombinationDataset.randomize(self, seed)
         self.segments = self.random_segments(seed)
 
     def random_segments(self, seed=None):
+        """Generate the start and end indices of each sub-dialogue such that
+        each sub-dialogue starts with a USER turn and ends with a SYSTEM turn
+        with a minimum length of 4 turns"""
+
         random.seed(seed)
-        return [
-            [
-                sorted(random.sample(range(0, n_turns), 2))
-                for n_turns in [
-                    len(self.dataset[d_id]) for d_id in pair_ids
-                ]  # n_turns of each dialogue
-            ]
-            for pair_ids in tqdm(
-                self.samples,
-                desc="Generating random segments for each sample (pair of dialogues)",
-            )
-        ]
+        segments = []
+        pair_segments = []
+
+        for pair_ids in tqdm(
+            self.samples,
+            desc="Generating random segments for each sample (pair of dialogues)",
+        ):
+            dialogues = [self.dataset[d_id] for d_id in pair_ids]
+            pair_nturns = [len(d) for d in dialogues]  # n_turns of each dialogue
+
+            for dialogue, nturns in zip(dialogues, pair_nturns):
+                end = random.randrange(
+                    self.min_nturns - 1
+                    if dialogue[1]["speaker"] == "SYSTEM"
+                    else self.min_nturns,
+                    nturns,
+                    2,
+                )
+                start = random.randrange(0, end - (self.min_nturns - 1) + 1)
+
+                pair_segments.append((start, end))
+
+            segments.append(pair_segments)
+
+        return segments
 
 
 if __name__ == "__main__":

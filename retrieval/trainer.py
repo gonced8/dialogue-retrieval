@@ -50,7 +50,10 @@ class Trainer(pl.Trainer):
 
             callbacks += [
                 ModelCheckpoint(
-                    filename="best", monitor=args.monitor, mode="min", save_last=True
+                    filename="best",
+                    monitor=args.monitor,
+                    mode=args.monitor_mode,
+                    save_last=True,
                 )
             ]
 
