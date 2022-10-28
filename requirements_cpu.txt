@@ -4,7 +4,9 @@ autofaiss==2.15.0
 datasets==2.4.0
 matplotlib==3.5.2
 numpy
+openpyxl
 pandas
+pyserini==0.17.1
 pytorch-lightning==1.6.5
 rouge-score==0.1.2
 seaborn==0.11.2

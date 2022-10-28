@@ -1,3 +1,4 @@
+.vscode/
 data/multiwoz/*/
 checkpoints/
 retrieval/data/multiwoz/index/

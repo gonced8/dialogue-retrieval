@@ -44,7 +44,7 @@ class MultiWOZCombinationDataModule(pl.LightningDataModule):
             self.train_dataset = MultiWOZCombinationDataset(
                 self.datasets_filenames["train"],
                 dialogues_per_sample=2,
-                min_nturns=4,
+                max_nturns=6,
                 total_batch_size=self.hparams.total_batch_size,
                 transformation=transformation,
                 seed=self.hparams.seed + 0,
@@ -54,7 +54,7 @@ class MultiWOZCombinationDataModule(pl.LightningDataModule):
             self.val_dataset = MultiWOZCombinationDataset(
                 self.datasets_filenames["val"],
                 dialogues_per_sample=self.hparams.candidates + 1,
-                min_nturns=4,
+                max_nturns=6,
                 total_batch_size=self.hparams.total_val_batch_size,
                 transformation=transformation,
                 seed=self.hparams.seed + 0,
@@ -64,7 +64,7 @@ class MultiWOZCombinationDataModule(pl.LightningDataModule):
             self.test_dataset = MultiWOZCombinationDataset(
                 self.datasets_filenames["test"],
                 dialogues_per_sample=self.hparams.candidates + 1,
-                min_nturns=4,
+                max_nturns=6,
                 total_batch_size=self.hparams.total_test_batch_size,
                 transformation=transformation,
                 seed=self.hparams.seed + 0,
@@ -207,29 +207,18 @@ class MultiWOZCombinationDataset(MultiWOZ, RandomCombinationDataset):
         filename,
         annotations=["domains", "acts", "slots", "values"],
         dialogues_per_sample=2,
-        min_nturns=4,
+        max_nturns=6,
         total_batch_size=1000,
         transformation=None,
         seed=None,
     ):
         self.annotations = annotations
-        self.min_nturns = min_nturns
+        self.max_nturns = max_nturns
         self.transformation = transformation
         self.segments = None
 
         # Initialize dataset
         MultiWOZ.__init__(self, filename)
-
-        # Filter conversations smaller than 4 turns
-        old_size = len(self.dataset)
-        self.dataset = {
-            k: v for k, v in self.dataset.items() if len(v) >= self.min_nturns
-        }
-        new_size = len(self.dataset)
-        if old_size != new_size:
-            print(
-                f"Before filtering conversations smaller than 4 turns: {old_size}\nAfter filtering out: {new_size}"
-            )
 
         # Sample pairs
         RandomCombinationDataset.__init__(
@@ -253,7 +242,7 @@ class MultiWOZCombinationDataset(MultiWOZ, RandomCombinationDataset):
 
         # Get dialogues and cut them according to randomized segment size
         dialogues = [
-            self.dataset[d_id][start:end]
+            self.dataset[d_id][start : end + 1]
             for d_id, (start, end) in zip(d_ids, self.segments[idx])
         ]
 
@@ -283,7 +272,6 @@ class MultiWOZCombinationDataset(MultiWOZ, RandomCombinationDataset):
 
         random.seed(seed)
         segments = []
-        pair_segments = []
 
         for pair_ids in tqdm(
             self.samples,
@@ -291,16 +279,15 @@ class MultiWOZCombinationDataset(MultiWOZ, RandomCombinationDataset):
         ):
             dialogues = [self.dataset[d_id] for d_id in pair_ids]
             pair_nturns = [len(d) for d in dialogues]  # n_turns of each dialogue
+            pair_segments = []
 
             for dialogue, nturns in zip(dialogues, pair_nturns):
                 end = random.randrange(
-                    self.min_nturns - 1
-                    if dialogue[1]["speaker"] == "SYSTEM"
-                    else self.min_nturns,
+                    1 if dialogue[1]["speaker"] == "SYSTEM" else 2,
                     nturns,
                     2,
                 )
-                start = random.randrange(0, end - (self.min_nturns - 1) + 1)
+                start = max(0, end - self.max_nturns + 1)
 
                 pair_segments.append((start, end))
 

@@ -12,6 +12,9 @@ class MultiWOZ:
     def __getitem__(self, k):
         return self.dataset[k]
 
+    def items(self):
+        return self.dataset.items()
+
     def from_id(self, d_id, last=False):
         k, se = d_id.split("_")
         start, end = [int(i) for i in se.split("-")]
@@ -29,7 +32,9 @@ class MultiWOZ:
         )
 
     @staticmethod
-    def get_sequence(dialogue, annotations, flatten=False):
+    def get_sequence(
+        dialogue, annotations=["domains", "acts", "slots", "values"], flatten=False
+    ):
         sequence = []
 
         # Loop through turns

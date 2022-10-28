@@ -1,0 +1,5 @@
+1. lcs é um bom proxy/métrica
+2. função de custo no treino
+3. avaliar a resposta retrieved com a ground truth
+
+treinar para otimizar o rouge entre as respostas em vez do lcs do contexto
