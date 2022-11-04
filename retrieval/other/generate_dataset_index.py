@@ -2,12 +2,12 @@ from argparse import ArgumentParser
 import json
 import os
 from pathlib import Path
-import random
 import shutil
 
 from autofaiss import build_index
 from faiss import read_index
 import numpy as np
+import pandas as pd
 import psutil
 from pytorch_lightning import seed_everything
 from sentence_transformers import SentenceTransformer
@@ -184,6 +184,14 @@ def generate_index(args):
 
 
 def retrieve(args):
+    # Check if results already exists
+    results_path = Path(args.results + ".json")
+    if results_path.exists():
+        print(f"Index at {results_path} already exists.")
+        option = input("Do you want to recompute results? [y/N] ")
+        if option == "" or option.lower() == "n":
+            return
+
     # Load dataset and exclude indices
     output_dir = Path(args.output)
 
@@ -253,16 +261,42 @@ def retrieve(args):
                     if hit_base_id != sample_base_id:
                         sample_results.append((hit_id, f"{hit_distance:.04f}"))
 
-                results[sample_id] = sample_results
+                results[sample_id] = sample_results[: args.k]
 
-    with open(args.results, "w") as f:
+    with open(results_path, "w") as f:
         json.dump(results, f, indent=4)
 
     return results
 
 
 def save_excel(args):
-    pass
+    # Load dataset
+    dataset_path = Path(args.output) / "dataset.json"
+
+    with open(dataset_path, "r") as f:
+        dataset = json.load(f)
+
+    dataset = {sample["id"]: sample["text"] for sample in dataset}
+
+    # Load results
+    results_path = Path(args.results)
+    with open(results_path.with_suffix(".json"), "r") as f:
+        results = json.load(f)
+
+    # Get data into pretty format for excel
+    data = {"ids": [k for k in results.keys()]}
+    data["text"] = [text for text in dataset.values()]
+
+    for i in range(args.k):
+        data[f"candidate {i+1}"] = [v[i][0] for v in results.values()]
+        data[f"score {i+1}"] = [v[i][1] for v in results.values()]
+        data[f"text {i+1}"] = [dataset[v[i][0]] for v in results.values()]
+
+    df = pd.DataFrame(data)
+
+    print(f"Saving excel file to {results_path.with_suffix('.xlsx')}")
+    with pd.ExcelWriter(results_path.with_suffix(".xlsx")) as writer:
+        df.to_excel(writer, index=False)
 
 
 if __name__ == "__main__":
@@ -276,14 +310,16 @@ if __name__ == "__main__":
         type=str,
         default="sentence-transformers/all-mpnet-base-v2",
     )
-    parser.add_argument("--batch_size", type=int, default=64)
+    parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--max_nturns", type=int, default=6)
     parser.add_argument("--num_workers", type=int, default=min(8, os.cpu_count()))
     parser.add_argument(
         "--index_directory", type=str, default="data/multiwoz/index/new_dataset"
     )
     parser.add_argument("--k", type=int, default=10)
-    parser.add_argument("--results", type=str, default="results.json")
+    parser.add_argument(
+        "--results", type=str, default="results/retrieval_sentence_transformer_bm25"
+    )
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
@@ -297,3 +333,5 @@ if __name__ == "__main__":
     generate_index(args)
     retrieve(args)
     save_excel(args)
+
+    print("Done")

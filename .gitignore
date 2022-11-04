@@ -1,4 +1,4 @@
-results.json
+results/
 .vscode/
 data/multiwoz/*/
 checkpoints/
