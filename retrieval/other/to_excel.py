@@ -16,7 +16,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--input", type=str, nargs="+", required=True, help="JSON file with results"
     )
-    parser.add_argument("--labels", type=str, nargs="*", help="Labels to use in plot")
+    parser.add_argument("--labels", type=str, nargs="*", help="Labels to use in file")
     parser.add_argument(
         "--output",
         type=str,

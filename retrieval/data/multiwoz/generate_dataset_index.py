@@ -216,9 +216,6 @@ def retrieve(args):
         pin_memory=bool(torch.cuda.device_count()),
     )
 
-    # Get maximum number of sub-dialogues per dialogue
-    max_n_subdialogues = max(len(indices) for indices in exclude_indices.values())
-
     # Tokenize, encode, and retrieve
     results = {}
 
@@ -226,6 +223,12 @@ def retrieve(args):
         for batch_idx, batch in enumerate(
             tqdm(dataloader, desc="Retrieving using Sentence Transformer")
         ):
+            # Get maximum number of sub-dialogues per dialogue
+            batch_exclude_indices = [
+                exclude_indices[sample_id.split("_")[0]] for sample_id in batch["ids"]
+            ]
+            max_n_subdialogues = max(len(indices) for indices in batch_exclude_indices)
+
             # Get input_ids and attention_mask into device
             x = {k: v.to(device) for k, v in batch["context_tokenized"].items()}
 
@@ -248,13 +251,18 @@ def retrieve(args):
                     hit_id = ids_labels[hit_id]
                     hit_base_id = hit_id.split("_")[0]
                     if hit_base_id != sample_base_id:
-                        hit_distance = str(hit_distance)
                         sample_results.append((hit_id, f"{hit_distance:.04f}"))
 
                 results[sample_id] = sample_results
 
     with open(args.results, "w") as f:
         json.dump(results, f, indent=4)
+
+    return results
+
+
+def save_excel(args):
+    pass
 
 
 if __name__ == "__main__":
@@ -288,3 +296,4 @@ if __name__ == "__main__":
     compute_embeddings(args)
     generate_index(args)
     retrieve(args)
+    save_excel(args)
