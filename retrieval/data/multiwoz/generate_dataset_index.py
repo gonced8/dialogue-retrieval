@@ -66,9 +66,8 @@ class CollateFn:
         ids = [sample["id"] for sample in batch]
 
         # Get data
-        texts = [sample["text"].split("\n") for sample in batch]
-        contexts = ["\n".join(text[:-1]) for text in texts]
-        # answers = [text[-1] for text in texts]
+        contexts = [sample["text"].rsplit("\n", 1)[0] for sample in batch]
+        # answers = [sample["text"].rsplit("\n", 1)[1] for sample in batch]
 
         # Tokenize and convert to tensors
         context_tokenized = self.tokenizer(
@@ -124,6 +123,8 @@ def compute_embeddings(args):
 
     # Encode dataset
     batch_ids = {}
+    n_batches = len(dataloader)
+    n_digits = len(str(n_batches))
 
     with torch.no_grad():
         for batch_idx, batch in enumerate(
@@ -136,7 +137,7 @@ def compute_embeddings(args):
             embeddings = model(x)["sentence_embedding"]
 
             # Save embeddings to disk
-            with open(embeddings_dir / f"{batch_idx}.npy", "wb") as f:
+            with open(embeddings_dir / f"{batch_idx:0{n_digits}d}.npy", "wb") as f:
                 np.save(f, embeddings.cpu().numpy())
 
             # Update batch to dialogue ids correspondence
@@ -240,15 +241,15 @@ def retrieve(args):
             for sample_id, sample_ids, sample_distances in zip(
                 batch["ids"], indices, distances
             ):
-                full_id = sample_id.split("_")[0]
-                exclude = exclude_indices[full_id]
+                sample_base_id = sample_id.split("_")[0]
                 sample_results = []
 
                 for hit_id, hit_distance in zip(sample_ids, sample_distances):
-                    if hit_id not in exclude:
-                        hit_label = ids_labels[hit_id]
+                    hit_id = ids_labels[hit_id]
+                    hit_base_id = hit_id.split("_")[0]
+                    if hit_base_id != sample_base_id:
                         hit_distance = str(hit_distance)
-                        sample_results.append((hit_label, hit_distance))
+                        sample_results.append((hit_id, f"{hit_distance:.04f}"))
 
                 results[sample_id] = sample_results
 
@@ -265,7 +266,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model_name",
         type=str,
-        default="sentence-transformers/afll-mpnet-base-v2",
+        default="sentence-transformers/all-mpnet-base-v2",
     )
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--max_nturns", type=int, default=6)
