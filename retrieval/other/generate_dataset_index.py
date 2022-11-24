@@ -5,9 +5,7 @@ from pathlib import Path
 import shutil
 
 from autofaiss import build_index
-from faiss import read_index
 import numpy as np
-import pandas as pd
 import psutil
 from pytorch_lightning import seed_everything
 from sentence_transformers import SentenceTransformer
@@ -18,7 +16,16 @@ from data.multiwoz import MultiWOZ
 
 
 def generate_dataset(args):
-    dataset = MultiWOZ(args.filename)
+    # Check if dataset already exists
+    output = Path(args.output)
+    if output.exists():
+        print(f"Dataset at {output} already exists.")
+        option = input("Do you want to regenerate the dataset? [y/N] ")
+        if option == "" or option.lower() == "n":
+            return
+
+    # Load original dataset
+    dataset = MultiWOZ(args.input)
     new_dataset = []
     exclude_indices = {}
 
@@ -41,20 +48,23 @@ def generate_dataset(args):
         exclude_indices[d_id] = list(range(size, size + len(sequence) // 2))
 
     # Create output directory if it doesn't exist
-    output_dir = Path(args.output)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output.parent.mkdir(parents=True, exist_ok=True)
 
     # Save new dataset
-    with open(output_dir / "dataset.json", "w") as f:
+    with open(output, "w") as f:
         json.dump(new_dataset, f, indent=4)
 
-    with open(output_dir / "exclude_indices.json", "w") as f:
+    with open(output.parent / (output.stem + "_exclude_indices.json"), "w") as f:
         json.dump(exclude_indices, f, indent=4)
 
     print(f"Saved new dataset to directory {args.output}")
     print(f"New dataset contains {len(new_dataset)} samples.")
 
     return new_dataset, exclude_indices
+
+
+def get_context_answer(text):
+    return text.rsplit("\n", 1)
 
 
 class CollateFn:
@@ -66,8 +76,8 @@ class CollateFn:
         ids = [sample["id"] for sample in batch]
 
         # Get data
-        contexts = [sample["text"].rsplit("\n", 1)[0] for sample in batch]
-        # answers = [sample["text"].rsplit("\n", 1)[1] for sample in batch]
+        contexts = [get_context_answer(sample["text"])[0] for sample in batch]
+        # answers = [get_context_answer(sample["text"])[1] for sample in batch]
 
         # Tokenize and convert to tensors
         context_tokenized = self.tokenizer(
@@ -98,10 +108,10 @@ def compute_embeddings(args):
             shutil.rmtree(embeddings_dir)
     embeddings_dir.mkdir(parents=True, exist_ok=True)
 
-    # Load dataset and exclude indices
-    output_dir = Path(args.output)
+    # Load dataset
+    output = Path(args.output)
 
-    with open(output_dir / "dataset.json", "r") as f:
+    with open(output, "r") as f:
         dataset = json.load(f)
 
     # Load model
@@ -183,128 +193,14 @@ def generate_index(args):
     print(f"Built index to {index_directory}")
 
 
-def retrieve(args):
-    # Check if results already exists
-    results_path = Path(args.results + ".json")
-    if results_path.exists():
-        print(f"Index at {results_path} already exists.")
-        option = input("Do you want to recompute results? [y/N] ")
-        if option == "" or option.lower() == "n":
-            return
-
-    # Load dataset and exclude indices
-    output_dir = Path(args.output)
-
-    with open(output_dir / "dataset.json", "r") as f:
-        dataset = json.load(f)
-
-    with open(output_dir / "exclude_indices.json", "r") as f:
-        exclude_indices = json.load(f)
-
-    # Load index
-    index_directory = Path(args.index_directory)
-    index = read_index(str(index_directory / "index.bin"))
-    with open(index_directory / "ids_labels.json", "r") as f:
-        ids_labels = list(json.load(f).values())
-
-    # Load model
-    use_cuda = torch.cuda.is_available()
-    device = torch.device("cuda" if use_cuda else "cpu")
-    model = SentenceTransformer(args.model_name)
-    model.to(device)
-    model.eval()
-
-    # Initialize Dataloader
-    dataloader = torch.utils.data.DataLoader(
-        dataset,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        collate_fn=CollateFn(model.tokenizer),
-        shuffle=False,
-        pin_memory=bool(torch.cuda.device_count()),
-    )
-
-    # Tokenize, encode, and retrieve
-    results = {}
-
-    with torch.no_grad():
-        for batch_idx, batch in enumerate(
-            tqdm(dataloader, desc="Retrieving using Sentence Transformer")
-        ):
-            # Get maximum number of sub-dialogues per dialogue
-            batch_exclude_indices = [
-                exclude_indices[sample_id.split("_")[0]] for sample_id in batch["ids"]
-            ]
-            max_n_subdialogues = max(len(indices) for indices in batch_exclude_indices)
-
-            # Get input_ids and attention_mask into device
-            x = {k: v.to(device) for k, v in batch["context_tokenized"].items()}
-
-            # Compute dialogue embeddings
-            embeddings = model(x)["sentence_embedding"]
-
-            # Retrieve
-            distances, indices = index.search(
-                embeddings.cpu().numpy(), args.k + max_n_subdialogues
-            )
-
-            # Filter sub-dialogues hits from the same original dialogue
-            for sample_id, sample_ids, sample_distances in zip(
-                batch["ids"], indices, distances
-            ):
-                sample_base_id = sample_id.split("_")[0]
-                sample_results = []
-
-                for hit_id, hit_distance in zip(sample_ids, sample_distances):
-                    hit_id = ids_labels[hit_id]
-                    hit_base_id = hit_id.split("_")[0]
-                    if hit_base_id != sample_base_id:
-                        sample_results.append((hit_id, f"{hit_distance:.04f}"))
-
-                results[sample_id] = sample_results[: args.k]
-
-    with open(results_path, "w") as f:
-        json.dump(results, f, indent=4)
-
-    return results
-
-
-def save_excel(args):
-    # Load dataset
-    dataset_path = Path(args.output) / "dataset.json"
-
-    with open(dataset_path, "r") as f:
-        dataset = json.load(f)
-
-    dataset = {sample["id"]: sample["text"] for sample in dataset}
-
-    # Load results
-    results_path = Path(args.results)
-    with open(results_path.with_suffix(".json"), "r") as f:
-        results = json.load(f)
-
-    # Get data into pretty format for excel
-    data = {"ids": [k for k in results.keys()]}
-    data["text"] = [text for text in dataset.values()]
-
-    for i in range(args.k):
-        data[f"candidate {i+1}"] = [v[i][0] for v in results.values()]
-        data[f"score {i+1}"] = [v[i][1] for v in results.values()]
-        data[f"text {i+1}"] = [dataset[v[i][0]] for v in results.values()]
-
-    df = pd.DataFrame(data)
-
-    print(f"Saving excel file to {results_path.with_suffix('.xlsx')}")
-    with pd.ExcelWriter(results_path.with_suffix(".xlsx")) as writer:
-        df.to_excel(writer, index=False)
-
-
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument(
-        "--filename", type=str, default="../data/multiwoz/processed/train.json"
+        "--input", type=str, default="../data/multiwoz/processed/test.json"
     )
-    parser.add_argument("--output", type=str, default="../data/multiwoz/processed2")
+    parser.add_argument(
+        "--output", type=str, default="../data/multiwoz/processed2/test.json"
+    )
     parser.add_argument(
         "--model_name",
         type=str,
@@ -314,11 +210,7 @@ if __name__ == "__main__":
     parser.add_argument("--max_nturns", type=int, default=6)
     parser.add_argument("--num_workers", type=int, default=min(8, os.cpu_count()))
     parser.add_argument(
-        "--index_directory", type=str, default="data/multiwoz/index/new_dataset"
-    )
-    parser.add_argument("--k", type=int, default=10)
-    parser.add_argument(
-        "--results", type=str, default="results/retrieval_sentence_transformer_bm25"
+        "--index_directory", type=str, default="data/multiwoz/index/test_st"
     )
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
@@ -327,11 +219,8 @@ if __name__ == "__main__":
     seed_everything(args.seed, workers=True)
 
     # Run
-    # TODO: only generate dataset if necessary
-    # generate_dataset(args)
+    generate_dataset(args)
     compute_embeddings(args)
     generate_index(args)
-    retrieve(args)
-    save_excel(args)
 
     print("Done")

@@ -2,24 +2,25 @@ from argparse import ArgumentParser
 import json
 from pathlib import Path
 
-from pytorch_lightning import seed_everything
 from tqdm import tqdm
 
-from data.multiwoz.single import MultiWOZSingleDataModule
 
+def generate_documents(args):
+    # Load dataset
+    with open(args.dataset, "r") as f:
+        dataset = json.load(f)
 
-def generate_documents(dataset, index_directory):
     # Get documents
     conversations = [
         {
             "id": sample["id"],
-            "contents": sample["context"],
-            "answer": sample["answer"],
+            "contents": sample["text"].rsplit("\n", 1)[0],
+            "answer": sample["text"].rsplit("\n", 1)[1],
         }
         for sample in dataset
     ]
 
-    index_directory = Path(index_directory) / "collection"
+    index_directory = Path(args.index_directory) / "collection"
     index_directory.mkdir(parents=True, exist_ok=True)
 
     # Save documents
@@ -30,19 +31,13 @@ def generate_documents(dataset, index_directory):
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser = MultiWOZSingleDataModule.add_argparse_args(parser)
-    parser.add_argument("--index_directory", type=str, required=True)
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--dataset", type=str, default="../data/multiwoz/processed2/test.json"
+    )
+    parser.add_argument(
+        "--index_directory", type=str, default="data/multiwoz/index/test_bm25"
+    )
     args = parser.parse_args()
 
-    # Seed everything
-    seed_everything(args.seed, workers=True)
-
-    # Load test dataset
-    data = MultiWOZSingleDataModule(args)
-    data.prepare_data()
-    data.setup("test")
-    dataset = data.test_dataset
-
     # Generate documents for BM25 index
-    generate_documents(dataset, args.index_directory)
+    generate_documents(args)

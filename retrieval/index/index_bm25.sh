@@ -1,6 +1,6 @@
 #!/bin/bash
 
-INDEX_DIRECTORY="data/multiwoz/index/bm25"
+INDEX_DIRECTORY="data/multiwoz/index/train_bm25"
 
 # Generate documents
 python -m other.generate_bm25_documents --index_directory $INDEX_DIRECTORY

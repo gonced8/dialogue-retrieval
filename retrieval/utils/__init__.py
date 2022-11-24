@@ -1,3 +1,6 @@
+import itertools
+
+
 def none_or_str(value):
     if value == "None":
         return None
@@ -34,3 +37,19 @@ def compute_rouge(metric, predictions, references, mode="precision"):
 
     # Return
     return result.values()
+
+
+def get_text(dialogue, part):
+    context, answer = dialogue["text"].rsplit("\n", 1)
+
+    if part == "context":
+        return context
+    else:
+        return answer
+
+
+def slice_dict(d, start=0, stop=-1, step=1):
+    if stop == -1:
+        stop = len(d)
+
+    return dict(itertools.islice(d.items(), start, stop, step))

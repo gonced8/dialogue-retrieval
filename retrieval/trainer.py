@@ -28,19 +28,32 @@ class Trainer(pl.Trainer):
             choices=["train", "test", "validate"],
         )
         parser.add_argument("--lr", type=float, default=1e-3)
+        parser.add_argument("--accumulate_grad_batches", type=int, default=1)
+        parser.add_argument("--max_epochs", type=int, default=1)
+        parser.add_argument("--check_val_every_n_epoch", type=int, default=1)
+        parser.add_argument("--val_check_interval", type=float, default=1.0)
         parser.add_argument("--monitor", type=str, default="val_loss")
         parser.add_argument("--monitor_mode", type=str, default="min")
+        parser.add_argument("--log_every_n_steps", type=int, default=1)
         parser.add_argument("--save_examples", action="store_true")
         parser.add_argument(
             "--ckpt_path", type=none_or_str, default=None, help="Checkpoint path"
         )
+        parser.add_argument("--enable_checkpointing", action="store_true")
+        parser.add_argument("--default_root_dir", type=str, default="checkpoints")
+        parser.add_argument("--fast_dev_run", action="store_true")
 
-        parent_parser = pl.Trainer.add_argparse_args(parent_parser)
+        # parent_parser = pl.Trainer.add_argparse_args(parent_parser)
 
         return parent_parser
 
     @staticmethod
     def from_argparse_args(args):
+        if args.model_name is None:
+            args.model_name = ""
+        if args.data_name is None:
+            args.data_name = ""
+
         # Get folder name
         name = f"{args.model_name.lower().replace('_', '')}_{args.data_name.lower().replace('_', '')}"
 

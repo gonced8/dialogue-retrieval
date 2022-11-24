@@ -12,10 +12,14 @@ def main(args):
     seed_everything(args.seed, workers=True)
 
     # Load dataset
-    data = get_data(args.data_name)(args)
+    if args.data_name is not None:
+        data = get_data(args.data_name)(args)
+    else:
+        data = None
 
     # Load model
-    model = get_model(args.model_name)(args, data)
+    if args.model_name is not None:
+        model = get_model(args.model_name)(args, data)
 
     # Get Trainer
     trainer = Trainer.from_argparse_args(args)
@@ -36,8 +40,10 @@ if __name__ == "__main__":
     parser = Trainer.add_argparse_args(parser)
     args = parser.parse_known_args()[0]
 
-    parser = get_data(args.data_name).add_argparse_args(parser)
-    parser = get_model(args.model_name).add_argparse_args(parser)
+    if args.data_name is not None:
+        parser = get_data(args.data_name).add_argparse_args(parser)
+    if args.model_name is not None:
+        parser = get_model(args.model_name).add_argparse_args(parser)
 
     parser.add_argument("--seed", type=int, default=42, help="seed")
 
