@@ -22,10 +22,10 @@ class MultiWOZDialogueDataModule(pl.LightningDataModule):
 
     def setup(self, stage=None):
         if stage in (None, "fit", "train"):
-            # Load train dataset
+            # Load train data
             with open(self.hparams.train_data, "r") as f:
                 self.train_data = json.load(f)
-                self.train_data = {
+                train_data = {
                     sample["id"]: {
                         "text": sample["text"],
                         "annotations": sample["annotations"],
@@ -33,40 +33,32 @@ class MultiWOZDialogueDataModule(pl.LightningDataModule):
                     for sample in self.train_data
                 }
 
-            # Load results of similar samples from pretrained Sentence Transformer
-            with open(self.hparams.results_st, "r") as f:
+            # Load dataset (containing future triplets)
+            with open(self.hparams.train_dataset, "r") as f:
                 self.train_dataset = json.load(f)
-
-            # Compute LCS between anchor and samples
-            top_k = 10
-            similarity = [
-                {
-                    candidate: self.similarity(
-                        self.train_data[anchor]["annotations"],
-                        self.train_data[candidate]["annotations"],
-                    )
-                    for candidate in slice_dict(candidates, stop=top_k)
-                }
-                for anchor, candidates in tqdm(
-                    self.train_dataset.items(), desc="Computing annotation similarity"
-                )
-            ]
 
             # Get triplets
             self.train_dataset = [
                 {
                     "anchor": anchor,
-                    "positive": max(candidates, key=lambda d_id: candidates[d_id]),
-                    "negative": min(candidates, key=lambda d_id: candidates[d_id]),
+                    "positive": max(
+                        candidates, key=lambda d_id: candidates[d_id]["lcs"]
+                    ),
+                    "negative": min(
+                        candidates, key=lambda d_id: candidates[d_id]["lcs"]
+                    ),
                 }
-                for anchor, candidates in zip(self.train_dataset, similarity)
+                for anchor, candidates in self.train_dataset.items()
+            ]
+            self.train_dataset = [
+                {t: {"id": d_id, **train_data[d_id]} for t, d_id in sample.items()}
+                for sample in self.train_dataset
             ]
 
-        # TODO
-        # if stage in (None, "fit", "validate"):
-        # Load validation dataset
-        # with open(self.val_dataset, "r") as f:
-        #    self.val_dataset = json.load(f)
+        if stage in (None, "fit", "validate"):
+            # Load validation dataset
+            with open(self.hparams.val_data, "r") as f:
+                self.val_dataset = json.load(f)
 
         if stage in (None, "test"):
             # Load test dataset
@@ -84,7 +76,14 @@ class MultiWOZDialogueDataModule(pl.LightningDataModule):
         )
 
     def val_dataloader(self):
-        raise NotImplementedError
+        return torch.utils.data.DataLoader(
+            self.val_dataset,
+            batch_size=self.hparams.val_batch_size,
+            num_workers=self.hparams.num_workers,
+            collate_fn=self.collate_fn_test,
+            shuffle=False,
+            pin_memory=bool(torch.cuda.device_count()),
+        )
 
     def test_dataloader(self):
         return torch.utils.data.DataLoader(
@@ -96,8 +95,17 @@ class MultiWOZDialogueDataModule(pl.LightningDataModule):
             pin_memory=bool(torch.cuda.device_count()),
         )
 
+    def index_dataloader(self):
+        return torch.utils.data.DataLoader(
+            self.train_data,
+            batch_size=self.hparams.index_batch_size,
+            num_workers=self.hparams.num_workers,
+            collate_fn=self.collate_fn_test,
+            shuffle=False,
+            pin_memory=bool(torch.cuda.device_count()),
+        )
+
     def collate_fn_fit(self, batch):
-        print(batch[0])
         # Get ids
         ids = [
             sample["anchor"]["id"]
@@ -115,6 +123,7 @@ class MultiWOZDialogueDataModule(pl.LightningDataModule):
 
         # Tokenize and convert to tensors
         if self.tokenizer is not None:
+            tokenized = {}
             for k, text_samples in texts.items():
                 tokenized[k] = self.tokenizer(
                     text_samples,
@@ -162,10 +171,12 @@ class MultiWOZDialogueDataModule(pl.LightningDataModule):
     def add_argparse_args(parent_parser):
         parser = parent_parser.add_argument_group("DataModule: MultiWOZDialogue")
         parser.add_argument("--train_data", type=str)
-        parser.add_argument("--results_st", type=str)
+        parser.add_argument("--val_data", type=str)
+        parser.add_argument("--train_dataset", type=str)
         parser.add_argument("--train_batch_size", type=int, default=8)
         parser.add_argument("--val_batch_size", type=int, default=64)
         parser.add_argument("--test_batch_size", type=int, default=64)
+        parser.add_argument("--index_batch_size", type=int, default=128)
         parser.add_argument("--num_workers", type=int, default=min(8, os.cpu_count()))
         return parent_parser
 

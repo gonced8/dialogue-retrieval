@@ -1,8 +1,11 @@
 import json
 from pathlib import Path
+import psutil
 
+from autofaiss import build_index
 from datasets import load_metric
 from faiss import read_index
+import numpy as np
 import pytorch_lightning as pl
 from sentence_transformers import SentenceTransformer
 import torch
@@ -10,6 +13,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import AdamW
 from torchmetrics.functional import retrieval_reciprocal_rank
+from tqdm import tqdm
 
 from utils import parse_rouge_score
 from utils.minmax_ndcg import *
@@ -38,6 +42,7 @@ class RetrieverAnswererer(pl.LightningModule):
 
         # Update data module
         if data is not None:
+            self.data = data
             data.tokenizer = self.retriever_tokenizer
 
         self.seed = self.hparams.seed
@@ -94,23 +99,77 @@ class RetrieverAnswererer(pl.LightningModule):
         candidates = self.retrieve(batch)
         return candidates
 
-    def on_train_epoch_start(self):
+    def on_train_epoch_end(self):
         # Print newline to save printed progress per epoch
         print()
 
     def training_step(self, batch, batch_idx):
-        anchor = self.self.retriever_encoder(batch["anchor"])["sentence_embedding"]
-        positive = self.self.retriever_encoder(batch["positive"])["sentence_embedding"]
-        negative = self.self.retriever_encoder(batch["negative"])["sentence_embedding"]
+        anchor = self.retriever_encoder(batch["anchor"])["sentence_embedding"]
+        positive = self.retriever_encoder(batch["positive"])["sentence_embedding"]
+        negative = self.retriever_encoder(batch["negative"])["sentence_embedding"]
 
-        output = self.triplet_loss(anchor, positive, negative)
-        return output
+        loss = self.triplet_loss(anchor, positive, negative)
 
-    # def validation_step(self, batch, batch_idx):
-    #    raise NotImplementedError
+        self.log("train_loss", loss)
+        return loss
+
+    def on_validation_epoch_start(self):
+        # Compute embeddings
+        all_embeddings = []
+        self.ids_labels = []
+
+        for batch_idx, batch in enumerate(
+            tqdm(self.data.index_dataloader(), desc="Calculating embeddings")
+        ):
+            # Get input_ids and attention_mask into device
+            x = {k: v.to(self.device) for k, v in batch["context_tokenized"].items()}
+
+            # Compute dialogue embeddings
+            embeddings = self.retriever_encoder(x)["sentence_embedding"]
+
+            # Add embeddings to cache
+            all_embeddings.append(embeddings.cpu().numpy())
+
+            # Update ids_labels array
+            self.ids_labels.extend(batch["ids"])
+
+        all_embeddings = np.concatenate(all_embeddings)
+
+        # Generate index
+        current_memory_available = f"{psutil.virtual_memory().available * 2**-30:.0f}G"
+
+        self.index, index_infos = build_index(
+            embeddings=all_embeddings,
+            max_index_memory_usage="32G",
+            current_memory_available=current_memory_available,
+            metric_type="ip",
+            save_on_disk=False,
+        )
+
+        self.index_dataset = self.data.train_data
+
+    def validation_step(self, batch, batch_idx):
+        candidates = self.forward(batch)
+        texts = [
+            sample_candidates[0]["dialogue"]["text"] for sample_candidates in candidates
+        ]
+
+        # Get truth and model answers and remove "SYSTEM: "
+        start = len("SYSTEM: ")
+        truth_answers = [answer[start:] for answer in batch["answers"]]
+        model_answers = [text.rsplit("\n", 1)[1][start:] for text in texts]
+
+        # Compute metrics
+        self.rouge_metric.add_batch(predictions=model_answers, references=truth_answers)
+
+        return
 
     def validation_epoch_end(self, outputs):
-        raise NotImplementedError
+        rouge_score = self.rouge_metric.compute()
+        rouge_score = parse_rouge_score(rouge_score)
+
+        self.log_dict(rouge_score, prog_bar=True)
+        return
 
     def on_validation_epoch_end(self):
         # Print newline to save printed progress after every validation
@@ -153,5 +212,5 @@ class RetrieverAnswererer(pl.LightningModule):
         )
         parser.add_argument("--index_directory", type=str)
         parser.add_argument("--index_dataset", type=str)
-        parser.add_argument("--n_candidates", type=int)
+        parser.add_argument("--n_candidates", type=int, required=True)
         return parent_parser

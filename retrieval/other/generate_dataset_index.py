@@ -16,6 +16,9 @@ from data.multiwoz import MultiWOZ
 
 
 def generate_dataset(args):
+    if args.output is None:
+        return
+
     # Check if dataset already exists
     output = Path(args.output)
     if output.exists():
@@ -96,6 +99,9 @@ class CollateFn:
 
 
 def compute_embeddings(args):
+    if args.index_directory is None:
+        return
+
     # Initialize embeddings directory
     embeddings_dir = Path(args.index_directory) / "embeddings"
     if embeddings_dir.exists():
@@ -161,6 +167,9 @@ def compute_embeddings(args):
 
 
 def generate_index(args):
+    if args.index_directory is None:
+        return
+
     # Check if index already exists
     index_directory = Path(args.index_directory)
     if (index_directory / "index.bin").exists():
