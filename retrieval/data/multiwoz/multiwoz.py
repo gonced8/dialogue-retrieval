@@ -53,19 +53,19 @@ class MultiWOZ:
 
                 # Loop through slots and values
                 for slot, value in slots_dict.items():
-                    element = []
+                    element = {}
 
                     if "domains" in annotations:
-                        element.append(domain)
+                        element["domain"] = domain
                     if "acts" in annotations:
-                        element.append(dialogue_act)
+                        element["act"] = dialogue_act
                     if "slots" in annotations and slot is not None:
-                        element.append(slot)
+                        element["slot"] = slot
                     if "values" in annotations and value is not None:
-                        element.append(value)
+                        element["value"] = value
 
                     if element:
-                        subsequence.append(tuple(element))
+                        subsequence.append(element)
 
             if subsequence:
                 sequence.append(subsequence)
@@ -82,7 +82,7 @@ class MultiWOZ:
                 x
                 for subsequence in sequence
                 for element in subsequence
-                for x in element
+                for x in element.values()
             ]
 
         return sequence
