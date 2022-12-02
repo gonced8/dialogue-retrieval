@@ -1,18 +1,12 @@
 from argparse import ArgumentParser
+from functools import partial
+from itertools import islice
 import json
 
+from rouge_score import rouge_scorer
 from tqdm import tqdm
 
-from utils import slice_dict
-from utils.lcs import lcs_similarity
-
-
-def similarity_fn(x, y):
-    # Flatten
-    x = [label for turn in x for label in turn]
-    y = [label for turn in y for label in turn]
-
-    return lcs_similarity(x, y)
+from utils.annotations import compare_lcs, compare_lcspp
 
 
 def compute_train_dataset(args):
@@ -31,26 +25,42 @@ def compute_train_dataset(args):
     with open(args.results_st, "r") as f:
         train_dataset = json.load(f)
 
-    # Compute LCS between anchor and samples
-    similarity = [
-        {
-            candidate: similarity_fn(
-                train_data[anchor]["annotations"],
-                train_data[candidate]["annotations"],
-            )
-            for candidate in slice_dict(candidates, stop=args.top_k)
-        }
-        for anchor, candidates in tqdm(
-            train_dataset.items(), desc="Computing annotation similarity"
-        )
-    ]
+    # Load ROUGE metric
+    rouge = rouge_scorer.RougeScorer(["rougeL"])
 
+    # Compute similarity between anchor and samples
     train_dataset = {
         anchor: {
-            candidate: {"st": st, "lcs": lcs}
-            for (candidate, st), lcs in zip(candidates.items(), lcs_scores.values())
+            candidate: {
+                "st": float(st),
+                "rougeL": rouge.score(
+                    train_data[anchor]["text"],
+                    train_data[candidate]["text"],
+                )["rougeL"].fmeasure,
+                "lcs": compare_lcs(
+                    train_data[anchor]["annotations"],
+                    train_data[candidate]["annotations"],
+                ),
+                "lcs++": compare_lcspp(
+                    train_data[anchor]["annotations"],
+                    train_data[candidate]["annotations"],
+                ),
+            }
+            for candidate, st in islice(candidates.items(), 0, args.top_k, 1)
         }
-        for (anchor, candidates), lcs_scores in zip(train_dataset.items(), similarity)
+        for anchor, candidates in tqdm(
+            train_dataset.items(),
+            desc="Computing similarities for each training sample",
+        )
+    }
+
+    # Round floats to 4 digits and save
+    train_dataset = {
+        anchor: {
+            candidate: {metric: round(value, 4) for metric, value in metrics.items()}
+            for candidate, metrics in candidates.items()
+        }
+        for anchor, candidates in train_dataset.items()
     }
 
     with open(args.dataset_output, "w") as f:

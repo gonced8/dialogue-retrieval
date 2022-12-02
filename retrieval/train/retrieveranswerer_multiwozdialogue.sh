@@ -11,6 +11,7 @@ args=(
     --train_data ../data/multiwoz/processed2/train.json
     --val_data ../data/multiwoz/processed2/val.json
     --train_dataset results/train_dataset.json
+    --heuristic rougeL
     --train_batch_size 10
     --val_batch_size 64
     --test_batch_size 64

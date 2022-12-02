@@ -7,6 +7,7 @@ from datasets import load_metric
 from faiss import read_index
 import numpy as np
 import pytorch_lightning as pl
+from rouge_score import rouge_scorer
 from sentence_transformers import SentenceTransformer
 import torch
 import torch.nn as nn
@@ -51,7 +52,7 @@ class RetrieverAnswererer(pl.LightningModule):
         self.triplet_loss = torch.nn.TripletMarginLoss()
 
         # Metrics
-        self.rouge_metric = load_metric("rouge")
+        self.rouge = rouge_scorer.RougeScorer(["rouge1", "rouge2", "rougeL"])
 
     def retrieve(self, batch):
         # Encode
@@ -160,16 +161,26 @@ class RetrieverAnswererer(pl.LightningModule):
         model_answers = [text.rsplit("\n", 1)[1][start:] for text in texts]
 
         # Compute metrics
-        self.rouge_metric.add_batch(predictions=model_answers, references=truth_answers)
+        rouge_score = [
+            self.rouge.score(truth_answer, model_answer)
+            for truth_answer, model_answer in zip(truth_answers, model_answers)
+        ]
+        rouge_score = {
+            k: round(
+                np.mean([sample_score[k].fmeasure for sample_score in rouge_score]), 4
+            )
+            for k in rouge_score[0]
+        }
+        self.log_dict(rouge_score, prog_bar=True, batch_size=len(truth_answers))
 
         return
 
-    def validation_epoch_end(self, outputs):
-        rouge_score = self.rouge_metric.compute()
-        rouge_score = parse_rouge_score(rouge_score)
-
-        self.log_dict(rouge_score, prog_bar=True)
-        return
+    # def validation_epoch_end(self, outputs):
+    #    rouge_score = self.rouge_metric.compute()
+    #    rouge_score = parse_rouge_score(rouge_score)
+    #
+    #    self.log_dict(rouge_score, prog_bar=True)
+    #    return
 
     def on_validation_epoch_end(self):
         # Print newline to save printed progress after every validation

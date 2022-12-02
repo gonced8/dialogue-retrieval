@@ -5,10 +5,9 @@ def get_labels(dialogue):
     """Get all different labels used in annotations"""
 
     labels = set()
-    for dialogue in [x, y]:
-        for turn in dialogue:
-            for annotation in turn:
-                labels.update(annotation.keys())
+    for turn in dialogue:
+        for annotation in turn:
+            labels.update(annotation.keys())
 
     return sorted(list(labels))
 
@@ -34,12 +33,52 @@ def get_annotations_per_type(dialogue, labels=None):
     return new_dialogue
 
 
-def compare(x, y, labels=None):
+def compute(x, y):
+    # Flatten multiple annotations per turn
+    x = {
+        label: [annotation for turn in dialogue for annotation in turn]
+        for label, dialogue in x.items()
+        if label in y
+    }
+    y = {
+        label: [annotation for turn in dialogue for annotation in turn]
+        for label, dialogue in y.items()
+        if label in x
+    }
+
+    # Calculate LCS similarity for each type of annotation
+    result = {}
+
+    for label, sequence in x.items():
+        other = y[label]
+        result[label] = lcs_similarity(sequence, other)
+
+    # Aggregate into single metric
+    return sum(result.values()) / len(result)
+
+
+def flatten_annotations(dialogue):
+    return [
+        value
+        for turn in dialogue
+        for annotation in turn
+        for value in annotation.values()
+    ]
+
+
+def compare_lcs(x, y, labels=None):
+    x = flatten_annotations(x)
+    y = flatten_annotations(y)
+
+    return lcs_similarity(x, y)
+
+
+def compare_lcspp(x, y, labels=None):
     # Make up sequences of annotations per label
     x = get_annotations_per_type(x, labels)
     y = get_annotations_per_type(y, labels)
 
-    return None
+    return compute(x, y)
 
 
 if __name__ == "__main__":
@@ -88,5 +127,6 @@ if __name__ == "__main__":
         ],
     ]
 
-    result = compare(x, y)
-    print(f"Similarity: {result}")
+    lcs = compare_lcs(x, y)
+    lcspp = compare_lcspp(x, y)
+    print(f"LCS:\t{lcs:.4f}\nLCS++:\t{lcspp:.4f}")

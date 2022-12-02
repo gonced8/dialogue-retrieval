@@ -42,10 +42,12 @@ class MultiWOZDialogueDataModule(pl.LightningDataModule):
                 {
                     "anchor": anchor,
                     "positive": max(
-                        candidates, key=lambda d_id: candidates[d_id]["lcs"]
+                        candidates,
+                        key=lambda d_id: candidates[d_id][self.hparams.heuristic],
                     ),
                     "negative": min(
-                        candidates, key=lambda d_id: candidates[d_id]["lcs"]
+                        candidates,
+                        key=lambda d_id: candidates[d_id][self.hparams.heuristic],
                     ),
                 }
                 for anchor, candidates in self.train_dataset.items()
@@ -173,6 +175,7 @@ class MultiWOZDialogueDataModule(pl.LightningDataModule):
         parser.add_argument("--train_data", type=str)
         parser.add_argument("--val_data", type=str)
         parser.add_argument("--train_dataset", type=str)
+        parser.add_argument("--heuristic", type=str)
         parser.add_argument("--train_batch_size", type=int, default=8)
         parser.add_argument("--val_batch_size", type=int, default=64)
         parser.add_argument("--test_batch_size", type=int, default=64)
