@@ -21,18 +21,18 @@ class MultiWOZDialogueDataModule(pl.LightningDataModule):
     #    pass
 
     def setup(self, stage=None):
-        if stage in (None, "fit", "train"):
-            # Load train data
-            with open(self.hparams.train_data, "r") as f:
-                self.train_data = json.load(f)
-                train_data = {
-                    sample["id"]: {
-                        "text": sample["text"],
-                        "annotations": sample["annotations"],
-                    }
-                    for sample in self.train_data
+        # Load train data
+        with open(self.hparams.train_data, "r") as f:
+            self.train_data = json.load(f)
+            train_data = {
+                sample["id"]: {
+                    "text": sample["text"],
+                    "annotations": sample["annotations"],
                 }
+                for sample in self.train_data
+            }
 
+        if stage in (None, "fit", "train"):
             # Load dataset (containing future triplets)
             with open(self.hparams.train_dataset, "r") as f:
                 self.train_dataset = json.load(f)

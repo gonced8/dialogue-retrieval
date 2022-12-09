@@ -20,7 +20,7 @@ args=(
 
     # Trainer
     --mode train
-    --lr 1e-5
+    --lr 1e-4
     --accumulate_grad_batches 4
     --max_epochs 20
 	--check_val_every_n_epoch 1
@@ -30,6 +30,7 @@ args=(
 	--default_root_dir checkpoints
     --monitor rougeL
 	--monitor_mode max
+    --patience 3
     #--fast_dev_run
 )
 

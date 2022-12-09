@@ -30,10 +30,12 @@ class Trainer(pl.Trainer):
         parser.add_argument("--lr", type=float, default=1e-3)
         parser.add_argument("--accumulate_grad_batches", type=int, default=1)
         parser.add_argument("--max_epochs", type=int, default=1)
+        parser.add_argument("--num_sanity_val_steps", type=int, default=0)
         parser.add_argument("--check_val_every_n_epoch", type=int, default=1)
         parser.add_argument("--val_check_interval", type=float, default=1.0)
         parser.add_argument("--monitor", type=str, default="val_loss")
         parser.add_argument("--monitor_mode", type=str, default="min")
+        parser.add_argument("--patience", type=int, default=3)
         parser.add_argument("--log_every_n_steps", type=int, default=1)
         parser.add_argument("--save_examples", action="store_true")
         parser.add_argument(
@@ -73,9 +75,9 @@ class Trainer(pl.Trainer):
             callbacks += [
                 EarlyStopping(
                     monitor=args.monitor,
-                    mode="min",
+                    mode=args.monitor_mode,
                     min_delta=1e-4,
-                    patience=5,
+                    patience=args.patience,
                     strict=True,
                 )
             ]

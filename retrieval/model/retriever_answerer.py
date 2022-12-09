@@ -12,7 +12,9 @@ from sentence_transformers import SentenceTransformer
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.optim import AdamW
+
+# from torch.optim import AdamW
+from torch.optim import SGD
 from torchmetrics.functional import retrieval_reciprocal_rank
 from tqdm import tqdm
 
@@ -210,7 +212,8 @@ class RetrieverAnswererer(pl.LightningModule):
         return
 
     def configure_optimizers(self):
-        optimizer = AdamW(self.parameters(), lr=self.hparams.lr)
+        # optimizer = AdamW(self.parameters(), lr=self.hparams.lr)
+        optimizer = SGD(self.parameters(), lr=self.hparams.lr, momentum=0.9)
         return optimizer
 
     @staticmethod
