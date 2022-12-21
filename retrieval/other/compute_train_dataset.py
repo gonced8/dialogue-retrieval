@@ -33,6 +33,10 @@ def compute_train_dataset(args):
         anchor: {
             candidate: {
                 "st": float(st),
+                "answer_rougeL": rouge.score(
+                    train_data[anchor]["text"].rsplit("\n", 1)[1],
+                    train_data[candidate]["text"].rsplit("\n", 1)[1],
+                )["rougeL"].fmeasure,
                 "rougeL": rouge.score(
                     train_data[anchor]["text"],
                     train_data[candidate]["text"],

@@ -174,6 +174,7 @@ class MultiWOZDialogueDataModule(pl.LightningDataModule):
         parser = parent_parser.add_argument_group("DataModule: MultiWOZDialogue")
         parser.add_argument("--train_data", type=str)
         parser.add_argument("--val_data", type=str)
+        parser.add_argument("--test_data", type=str)
         parser.add_argument("--train_dataset", type=str)
         parser.add_argument("--heuristic", type=str)
         parser.add_argument("--train_batch_size", type=int, default=8)

@@ -10,17 +10,16 @@ args=(
 	--data_name multiwoz_dialogue
     --train_data ../data/multiwoz/processed2/train.json
     --val_data ../data/multiwoz/processed2/val.json
-    --train_dataset results/train_dataset.json
-    --heuristic rougeL
+    --train_dataset results/train_dataset_top10.json
+    --heuristic lcs++
     --train_batch_size 10
     --val_batch_size 64
-    --test_batch_size 64
-    --index_batch_size 512
+    --index_batch_size 256
     --num_workers 8
 
     # Trainer
     --mode train
-    --lr 1e-4
+    --lr 1e-5
     --accumulate_grad_batches 4
     --max_epochs 20
 	--check_val_every_n_epoch 1
@@ -28,12 +27,13 @@ args=(
 	--log_every_n_steps 1
 	--enable_checkpointing
 	--default_root_dir checkpoints
-    --monitor rougeL
+    --monitor rouge2
 	--monitor_mode max
     --patience 3
     #--fast_dev_run
 )
 
+date '+%Y-%m-%d_%H%M%S'
 echo "python main.py ${args[@]} $@"
 
-python main.py "${args[@]}" "$@"
+time python main.py "${args[@]}" "$@"

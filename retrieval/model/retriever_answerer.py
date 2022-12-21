@@ -3,7 +3,6 @@ from pathlib import Path
 import psutil
 
 from autofaiss import build_index
-from datasets import load_metric
 from faiss import read_index
 import numpy as np
 import pytorch_lightning as pl
@@ -13,8 +12,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# from torch.optim import AdamW
-from torch.optim import SGD
+from torch.optim import AdamW
+
+# from torch.optim import SGD
 from torchmetrics.functional import retrieval_reciprocal_rank
 from tqdm import tqdm
 
@@ -116,7 +116,7 @@ class RetrieverAnswererer(pl.LightningModule):
         self.log("train_loss", loss)
         return loss
 
-    def on_validation_epoch_start(self):
+    def generate_index(self):
         # Compute embeddings
         all_embeddings = []
         self.ids_labels = []
@@ -151,6 +151,9 @@ class RetrieverAnswererer(pl.LightningModule):
 
         self.index_dataset = self.data.train_data
 
+    def on_validation_epoch_start(self):
+        self.generate_index()
+
     def validation_step(self, batch, batch_idx):
         candidates = self.forward(batch)
         texts = [
@@ -175,18 +178,19 @@ class RetrieverAnswererer(pl.LightningModule):
         }
         self.log_dict(rouge_score, prog_bar=True, batch_size=len(truth_answers))
 
-        return
-
-    # def validation_epoch_end(self, outputs):
-    #    rouge_score = self.rouge_metric.compute()
-    #    rouge_score = parse_rouge_score(rouge_score)
-    #
-    #    self.log_dict(rouge_score, prog_bar=True)
-    #    return
+        return {
+            "ids": batch["ids"],
+            "truth_answers": truth_answers,
+            "model_answers": model_answers,
+            "metrics": rouge_score,
+        }
 
     def on_validation_epoch_end(self):
         # Print newline to save printed progress after every validation
         print()
+
+    def on_test_epoch_start(self):
+        self.generate_index()
 
     def test_step(self, batch, batch_idx):
         candidates = self.forward(batch)
@@ -200,20 +204,28 @@ class RetrieverAnswererer(pl.LightningModule):
         model_answers = [text.rsplit("\n", 1)[1][start:] for text in texts]
 
         # Compute metrics
-        self.rouge_metric.add_batch(predictions=model_answers, references=truth_answers)
+        rouge_score = [
+            self.rouge.score(truth_answer, model_answer)
+            for truth_answer, model_answer in zip(truth_answers, model_answers)
+        ]
+        rouge_score = {
+            k: round(
+                np.mean([sample_score[k].fmeasure for sample_score in rouge_score]), 4
+            )
+            for k in rouge_score[0]
+        }
+        self.log_dict(rouge_score, prog_bar=True, batch_size=len(truth_answers))
 
-        return
-
-    def test_epoch_end(self, outputs):
-        rouge_score = self.rouge_metric.compute()
-        rouge_score = parse_rouge_score(rouge_score)
-
-        self.log_dict(rouge_score, prog_bar=True)
-        return
+        return {
+            "ids": batch["ids"],
+            "truth_answers": truth_answers,
+            "model_answers": model_answers,
+            "metrics": rouge_score,
+        }
 
     def configure_optimizers(self):
-        # optimizer = AdamW(self.parameters(), lr=self.hparams.lr)
-        optimizer = SGD(self.parameters(), lr=self.hparams.lr, momentum=0.9)
+        optimizer = AdamW(self.parameters(), lr=self.hparams.lr)
+        # optimizer = SGD(self.parameters(), lr=self.hparams.lr, momentum=0.9)
         return optimizer
 
     @staticmethod

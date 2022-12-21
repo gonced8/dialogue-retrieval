@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import (
     EarlyStopping,
@@ -65,7 +67,7 @@ class Trainer(pl.Trainer):
 
             callbacks += [
                 ModelCheckpoint(
-                    filename="best",
+                    filename="checkpoint_epoch={epoch:02d}-rougeL={rougeL:.4f}",
                     monitor=args.monitor,
                     mode=args.monitor_mode,
                     save_last=True,
@@ -90,7 +92,11 @@ class Trainer(pl.Trainer):
             if args.save_examples:
                 callbacks += [SaveExamples()]
 
-            logger = TensorBoardLogger(save_dir="checkpoints", name=name)
+            logger = TensorBoardLogger(
+                save_dir="checkpoints",
+                name=name,
+                version="version_" + datetime.now().strftime("%Y-%m-%d_%H%M%S"),
+            )
         else:
             callbacks = None
             logger = False
