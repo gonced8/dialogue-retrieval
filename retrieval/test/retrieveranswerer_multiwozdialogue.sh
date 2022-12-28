@@ -8,11 +8,12 @@ args=(
 
     # Data
 	--data_name multiwoz_dialogue
-    --train_data ../data/multiwoz/processed2/train.json
-    --test_data ../data/multiwoz/processed2/test.json
-    --heuristic lcs++
+    #--train_data ../data/multiwoz/processed2/train.json
+    #--test_data ../data/multiwoz/processed2/test.json
+    --train_data ../data/taskmaster/processed2/train.json
+    --test_data ../data/taskmaster/processed2/test.json
     --test_batch_size 64
-    --index_batch_size 256
+    --index_batch_size 128
     --num_workers 8
 
     # Trainer

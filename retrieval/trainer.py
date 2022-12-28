@@ -92,10 +92,13 @@ class Trainer(pl.Trainer):
             if args.save_examples:
                 callbacks += [SaveExamples()]
 
+            version = "version_" + datetime.now().strftime("%Y-%m-%d_%H%M%S")
+            print(f"Version: {version}")
+
             logger = TensorBoardLogger(
                 save_dir="checkpoints",
                 name=name,
-                version="version_" + datetime.now().strftime("%Y-%m-%d_%H%M%S"),
+                version=version,
             )
         else:
             callbacks = None

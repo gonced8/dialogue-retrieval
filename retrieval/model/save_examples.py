@@ -13,31 +13,51 @@ class SaveExamples(Callback):
         self.test_outs = []
 
     def save(self, outs, filename, digits=4):
+        # Average metrics and save
         metrics = {
-            m: np.stack([step["metrics"][m] for step in outs]).mean()
+            m: np.concatenate([step["metrics"][m] for step in outs]).mean()
             for m in outs[0]["metrics"]
         }
-        data = [{k: v.item() for k, v in metrics.items()}]
+
+        data = [metrics]
+
+        # Aggregate metrics per sample
+        metrics_keys = outs[0]["metrics"].keys()
+        for step in outs:
+            step["metrics"] = [
+                dict(zip(metrics_keys, metrics_values))
+                for metrics_values in zip(*step["metrics"].values())
+            ]
+
+        # Get results for each sample
+        sample_keys = [k.rstrip("s") if k != "metrics" else k for k in outs[0].keys()]
+
         data.extend(
             [
-                {
-                    k.rstrip("s"): v.tolist() if isinstance(v, torch.Tensor) else v
-                    for k, v in step.items()
-                    if k != "metrics"
-                }
+                dict(zip(sample_keys, sample_values))
                 for step in outs
-                # TODO
+                for sample_values in zip(*step.values())
             ]
         )
 
-        # Round float numbers
+        # Convert Tensors to lists
         data = [
             {
-                k: round(v, digits) if isinstance(v, float) else v
+                k: v.tolist() if isinstance(v, torch.Tensor) else v
                 for k, v in sample.items()
             }
             for sample in data
         ]
+
+        # Round float numbers
+        round_recursively = (
+            lambda x: round(x, digits)
+            if isinstance(x, float)
+            else {k: round_recursively(v) for k, v in x.items()}
+            if isinstance(x, dict)
+            else x
+        )
+        data = [round_recursively(sample) for sample in data]
 
         # Save results to file
         with open(filename, "w") as f:

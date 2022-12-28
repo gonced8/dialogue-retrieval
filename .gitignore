@@ -1,6 +1,7 @@
 results/
 .vscode/
 data/multiwoz/*/
+data/taskmaster/*/
 checkpoints/
 retrieval/data/multiwoz/index/
 

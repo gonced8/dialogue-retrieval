@@ -72,7 +72,7 @@ class RetrieverAnswererer(pl.LightningModule):
         )
 
         # Filter sub-dialogues hits from the same original dialogue
-        query_base_ids = [query_id.split("_")[0] for query_id in batch["ids"]]
+        query_base_ids = [query_id.rsplit("_", 1)[0] for query_id in batch["ids"]]
         candidates = [
             [
                 {
@@ -171,12 +171,9 @@ class RetrieverAnswererer(pl.LightningModule):
             for truth_answer, model_answer in zip(truth_answers, model_answers)
         ]
         rouge_score = {
-            k: round(
-                np.mean([sample_score[k].fmeasure for sample_score in rouge_score]), 4
-            )
-            for k in rouge_score[0]
+            k: [sample_score[k].fmeasure for sample_score in rouge_score]
+            for k in rouge_score[0].keys()
         }
-        self.log_dict(rouge_score, prog_bar=True, batch_size=len(truth_answers))
 
         return {
             "ids": batch["ids"],
@@ -184,6 +181,15 @@ class RetrieverAnswererer(pl.LightningModule):
             "model_answers": model_answers,
             "metrics": rouge_score,
         }
+
+    def validation_epoch_end(self, outs):
+        # Compute average of metrics
+        metrics = {
+            m: round(np.concatenate([step["metrics"][m] for step in outs]).mean(), 4)
+            for m in outs[0]["metrics"]
+        }
+
+        self.log_dict(metrics, prog_bar=True)
 
     def on_validation_epoch_end(self):
         # Print newline to save printed progress after every validation
@@ -209,12 +215,9 @@ class RetrieverAnswererer(pl.LightningModule):
             for truth_answer, model_answer in zip(truth_answers, model_answers)
         ]
         rouge_score = {
-            k: round(
-                np.mean([sample_score[k].fmeasure for sample_score in rouge_score]), 4
-            )
-            for k in rouge_score[0]
+            k: [sample_score[k].fmeasure for sample_score in rouge_score]
+            for k in rouge_score[0].keys()
         }
-        self.log_dict(rouge_score, prog_bar=True, batch_size=len(truth_answers))
 
         return {
             "ids": batch["ids"],
@@ -222,6 +225,9 @@ class RetrieverAnswererer(pl.LightningModule):
             "model_answers": model_answers,
             "metrics": rouge_score,
         }
+
+    def test_epoch_end(self, outs):
+        self.validation_epoch_end(outs)
 
     def configure_optimizers(self):
         optimizer = AdamW(self.parameters(), lr=self.hparams.lr)

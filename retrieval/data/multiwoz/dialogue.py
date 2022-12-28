@@ -17,18 +17,12 @@ class MultiWOZDialogueDataModule(pl.LightningDataModule):
         self.annotations = ["domains", "acts", "slots", "values"]
         self.tokenizer = None
 
-    # def prepare_data(self):
-    #    pass
-
     def setup(self, stage=None):
         # Load train data
         with open(self.hparams.train_data, "r") as f:
             self.train_data = json.load(f)
             train_data = {
-                sample["id"]: {
-                    "text": sample["text"],
-                    "annotations": sample["annotations"],
-                }
+                sample["id"]: {k: v for k, v in sample.items() if k != "id"}
                 for sample in self.train_data
             }
 
@@ -39,19 +33,15 @@ class MultiWOZDialogueDataModule(pl.LightningDataModule):
 
             # Get triplets
             self.train_dataset = [
-                {
-                    "anchor": anchor,
-                    "positive": max(
-                        candidates,
-                        key=lambda d_id: candidates[d_id][self.hparams.heuristic],
-                    ),
-                    "negative": min(
-                        candidates,
-                        key=lambda d_id: candidates[d_id][self.hparams.heuristic],
-                    ),
-                }
+                self.get_triplet(
+                    anchor,
+                    candidates,
+                    self.hparams.heuristic,
+                    self.hparams.negative_st_best,
+                )
                 for anchor, candidates in self.train_dataset.items()
             ]
+
             self.train_dataset = [
                 {t: {"id": d_id, **train_data[d_id]} for t, d_id in sample.items()}
                 for sample in self.train_dataset
@@ -170,6 +160,30 @@ class MultiWOZDialogueDataModule(pl.LightningDataModule):
         }
 
     @staticmethod
+    def get_triplet(anchor, candidates, heuristic, negative_st_best):
+        # Positive example
+        positive = max(
+            candidates,
+            key=lambda d_id: candidates[d_id][heuristic],
+        )
+
+        # Negative example
+        if not negative_st_best:
+            negative = min(
+                candidates,
+                key=lambda d_id: candidates[d_id][heuristic],
+            )
+        else:
+            ids = list(candidates.keys())
+            negative = ids[0] if positive != ids[0] else ids[1]
+
+        return {
+            "anchor": anchor,
+            "positive": positive,
+            "negative": negative,
+        }
+
+    @staticmethod
     def add_argparse_args(parent_parser):
         parser = parent_parser.add_argument_group("DataModule: MultiWOZDialogue")
         parser.add_argument("--train_data", type=str)
@@ -177,6 +191,7 @@ class MultiWOZDialogueDataModule(pl.LightningDataModule):
         parser.add_argument("--test_data", type=str)
         parser.add_argument("--train_dataset", type=str)
         parser.add_argument("--heuristic", type=str)
+        parser.add_argument("--negative_st_best", action="store_true")
         parser.add_argument("--train_batch_size", type=int, default=8)
         parser.add_argument("--val_batch_size", type=int, default=64)
         parser.add_argument("--test_batch_size", type=int, default=64)
