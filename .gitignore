@@ -1,9 +1,8 @@
 results/
 .vscode/
-data/multiwoz/*/
-data/taskmaster/*/
+data/*/*/
 checkpoints/
-retrieval/data/multiwoz/index/
+retrieval/data/*/index/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

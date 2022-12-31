@@ -26,7 +26,7 @@ def main(args):
 
     # Train or test
     if "train" in args.mode:
-        trainer.validate(model, data, ckpt_path=args.ckpt_path)
+        # trainer.validate(model, data, ckpt_path=args.ckpt_path)
         trainer.fit(model, data, ckpt_path=args.ckpt_path)
     elif "validate" in args.mode:
         trainer.validate(model, data, ckpt_path=args.ckpt_path)

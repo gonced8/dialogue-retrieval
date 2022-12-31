@@ -9,15 +9,42 @@ from tqdm import tqdm
 from utils.annotations import compare_lcs, compare_lcspp
 
 
+def compute_similarity(anchor, candidate, st, rouge):
+    text_similarity = {
+        "st": float(st),
+        "answer_rougeL": rouge.score(
+            anchor["text"].rsplit("\n", 1)[1],
+            candidate["text"].rsplit("\n", 1)[1],
+        )["rougeL"].fmeasure,
+        "rougeL": rouge.score(
+            anchor["text"],
+            candidate["text"],
+        )["rougeL"].fmeasure,
+    }
+
+    if "annotations" in anchor:
+        annotations_similarity = {
+            "lcs": compare_lcs(
+                anchor["annotations"],
+                candidate["annotations"],
+            ),
+            "lcs++": compare_lcspp(
+                anchor["annotations"],
+                candidate["annotations"],
+            ),
+        }
+
+        text_similarity.update(annotations_similarity)
+
+    return text_similarity
+
+
 def compute_train_dataset(args):
     # Load train dataset
     with open(args.train_data, "r") as f:
         train_data = json.load(f)
         train_data = {
-            sample["id"]: {
-                "text": sample["text"],
-                "annotations": sample["annotations"],
-            }
+            sample["id"]: {k: v for k, v in sample.items() if k != "id"}
             for sample in train_data
         }
 
@@ -31,25 +58,9 @@ def compute_train_dataset(args):
     # Compute similarity between anchor and samples
     train_dataset = {
         anchor: {
-            candidate: {
-                "st": float(st),
-                "answer_rougeL": rouge.score(
-                    train_data[anchor]["text"].rsplit("\n", 1)[1],
-                    train_data[candidate]["text"].rsplit("\n", 1)[1],
-                )["rougeL"].fmeasure,
-                "rougeL": rouge.score(
-                    train_data[anchor]["text"],
-                    train_data[candidate]["text"],
-                )["rougeL"].fmeasure,
-                "lcs": compare_lcs(
-                    train_data[anchor]["annotations"],
-                    train_data[candidate]["annotations"],
-                ),
-                "lcs++": compare_lcspp(
-                    train_data[anchor]["annotations"],
-                    train_data[candidate]["annotations"],
-                ),
-            }
+            candidate: compute_similarity(
+                train_data[anchor], train_data[candidate], st, rouge
+            )
             for candidate, st in islice(candidates.items(), 0, args.top_k, 1)
         }
         for anchor, candidates in tqdm(

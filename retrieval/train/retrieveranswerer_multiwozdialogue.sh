@@ -11,11 +11,11 @@ args=(
     --train_data ../data/multiwoz/processed2/train.json
     --val_data ../data/multiwoz/processed2/val.json
     --train_dataset results/train_dataset_top10.json
-    --heuristic lcs++
+    --heuristic answer_rougeL
     #--negative_st_best
-    --train_batch_size 10
+    --train_batch_size 8
     --val_batch_size 64
-    --index_batch_size 256
+    --index_batch_size 128
     --num_workers 8
 
     # Trainer
@@ -30,7 +30,7 @@ args=(
 	--default_root_dir checkpoints
     --monitor rougeL
 	--monitor_mode max
-    --patience 3
+    --patience 5
     #--fast_dev_run
 )
 

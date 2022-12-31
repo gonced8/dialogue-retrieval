@@ -19,7 +19,7 @@ from utils.lcs import lcs_similarity
 def retrieve_bm25(args):
     if args.results_bm25 is None:
         return
-        
+
     # Check if results already exists
     results_bm25_path = Path(args.results_bm25)
     if results_bm25_path.exists():
@@ -57,11 +57,11 @@ def retrieve_bm25(args):
         scores = [hit.score for hit in hits]
 
         # Filter sub-dialogues hits from the same original dialogue
-        sample_base_id = sample["id"].split("_")[0]
+        sample_base_id = sample["id"].rsplit("_", 1)[0]
         sample_results = {}
 
         for hit_id, hit_distance in zip(labels, scores):
-            hit_base_id = hit_id.split("_")[0]
+            hit_base_id = hit_id.rsplit("_", 1)[0]
             if hit_base_id != sample_base_id:
                 sample_results[hit_id] = f"{hit_distance:.04f}"
 
@@ -131,7 +131,8 @@ def retrieve_st(args):
         ):
             # Get maximum number of sub-dialogues per dialogue
             batch_exclude_indices = [
-                exclude_indices[sample_id.split("_")[0]] for sample_id in batch["ids"]
+                exclude_indices[sample_id.rsplit("_", 1)[0]]
+                for sample_id in batch["ids"]
             ]
             max_n_subdialogues = max(len(indices) for indices in batch_exclude_indices)
 
@@ -150,12 +151,12 @@ def retrieve_st(args):
             for sample_id, sample_ids, sample_distances in zip(
                 batch["ids"], indices, distances
             ):
-                sample_base_id = sample_id.split("_")[0]
+                sample_base_id = sample_id.rsplit("_", 1)[0]
                 sample_results = {}
 
                 for hit_id, hit_distance in zip(sample_ids, sample_distances):
                     hit_id = ids_labels[hit_id]
-                    hit_base_id = hit_id.split("_")[0]
+                    hit_base_id = hit_id.rsplit("_", 1)[0]
                     if hit_base_id != sample_base_id:
                         sample_results[hit_id] = f"{hit_distance:.04f}"
 
