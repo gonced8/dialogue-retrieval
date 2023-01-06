@@ -2,6 +2,7 @@
 
 autofaiss==2.15.0
 datasets==2.4.0
+jsonlines
 matplotlib==3.5.2
 numpy
 openpyxl

@@ -3,6 +3,7 @@ results/
 data/*/*/
 checkpoints/
 retrieval/data/*/index/
+generation/data/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
