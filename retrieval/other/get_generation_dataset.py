@@ -16,9 +16,13 @@ def get_sample(args, data, index_data, anchor, candidates):
     if args.mode == "none":
         candidates = []
     elif args.mode == "random":
-        candidates = random.sample(list(data.keys()))
+        candidates = random.sample(list(index_data.keys()), args.candidates)
     elif args.mode == "sample":
-        candidates = random.sample(candidates, args.candidates)
+        candidates = random.sample(list(candidates.keys()), args.candidates)
+    elif args.mode == "best":
+        candidates = sorted(
+            candidates, key=lambda d_id: candidates[d_id]["answer_rougeL"], reverse=True
+        )[: args.candidates]
 
     # Get knowledge from candidates
     candidates = [
@@ -31,7 +35,12 @@ def get_sample(args, data, index_data, anchor, candidates):
     knowledge = re.sub(" +", " ", knowledge)
     response = re.sub(" +", " ", response)
 
-    return {"Context": context, "Knowledge": knowledge, "Response": response}
+    return {
+        "id": anchor,
+        "Context": context,
+        "Knowledge": knowledge,
+        "Response": response,
+    }
 
 
 def build_generate_dataset(args):
@@ -60,7 +69,7 @@ def build_generate_dataset(args):
 
     # Get training dataset for generation
     output = [
-        get_sample(args, data, index_data, anchor, list(candidates.keys()))
+        get_sample(args, data, index_data, anchor, candidates)
         for anchor, candidates in tqdm(retrieval_results.items())
     ]
 
@@ -75,7 +84,7 @@ if __name__ == "__main__":
     parser.add_argument("--index_dataset", type=str, required=True)
     parser.add_argument("--retrieval_results", type=str, required=True)
     parser.add_argument(
-        "--mode", type=str, choices=["none", "random", "sample"], required=True
+        "--mode", type=str, choices=["none", "random", "sample", "best"], required=True
     )
     parser.add_argument("--candidates", type=int, default=3)
     parser.add_argument("--dataset_output", type=str, required=True)

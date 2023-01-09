@@ -203,6 +203,10 @@ class RetrieverAnswererer(pl.LightningModule):
         texts = [
             sample_candidates[0]["dialogue"]["text"] for sample_candidates in candidates
         ]
+        candidates = [
+            [candidate["dialogue"]["id"] for candidate in sample_candidates]
+            for sample_candidates in candidates
+        ]
 
         # Get truth and model answers and remove "SYSTEM: "
         start = len("SYSTEM: ")
@@ -221,6 +225,8 @@ class RetrieverAnswererer(pl.LightningModule):
 
         return {
             "ids": batch["ids"],
+            "contexts": batch["contexts"],
+            "candidates": candidates,
             "truth_answers": truth_answers,
             "model_answers": model_answers,
             "metrics": rouge_score,
