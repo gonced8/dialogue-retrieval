@@ -11,7 +11,7 @@ from transformers import (
 def build_samples(samples):
     # If samples is only one instance, make it into a dict of lists
     if not isinstance(samples["id"], list):
-        samples = {k: [v] for k,v in samples.items()}
+        samples = {k: [v] for k, v in samples.items()}
 
     input_texts = []
 
@@ -22,13 +22,13 @@ def build_samples(samples):
         input_text += " => "
 
         input_texts.append(input_text)
-        
+
     model_inputs = tokenizer(
         input_texts,
         max_length=args.max_input_length,
         truncation=True,
         padding=True,
-        return_tensors="pt"
+        return_tensors="pt",
     )
 
     return {
@@ -67,10 +67,11 @@ if __name__ == "__main__":
         model=model,
         tokenizer=tokenizer,
         batch_size=args.test_batch_size,
-        device=0,
+        # device=0,
     )
 
     # Test
+    """
     for out in generator(
         iter(dataset["test"]),
         batch_size=args.test_batch_size,
@@ -78,3 +79,10 @@ if __name__ == "__main__":
     ):
         #print(out)
         pass
+    """
+
+    while True:
+        text_input = input("input:\n")
+        data = [{"id": "test", "Context": text_input, "Knowledge": ""}]
+        out = generator(data, batch_size=1, clean_up_tokenization_spaces=True)
+        print(out)

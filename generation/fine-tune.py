@@ -13,27 +13,39 @@ from transformers import (
 
 
 def build_samples(samples):
-    inputs_text = []
+    input_texts = []
 
-    for context, knowledge in zip(samples["Context"], samples["Knowledge"]):
-        input_text = context
-        if knowledge:
+    for context, knowledge in zip(samples["context"], samples["knowledge"]):
+        input_text = " EOS ".join(context)
+        if knowledge and args.candidates > 0:
+            knowledge = " | ".join(knowledge[: args.candidates])
             input_text += " <|Knowledge|> " + knowledge
         input_text += " => "
 
-        inputs_text.append(input_text)
+        input_texts.append(input_text)
 
     model_inputs = tokenizer(
-        inputs_text,
+        input_texts,
         max_length=args.max_input_length,
         truncation=True,
+        return_length=True,
     )
     labels = tokenizer(
-        samples["Response"],
+        samples["response"],
         max_length=args.max_output_length,
         truncation=True,
         return_attention_mask=False,
+        return_length=True,
     )
+
+    # Verify if possible truncation
+    if any(
+        sample_len == args.max_input_length for sample_len in model_inputs["length"]
+    ):
+        print("WARNING: Possible truncation occurring in input_ids.")
+
+    if any(sample_len == args.max_output_length for sample_len in labels["length"]):
+        print("WARNING: Possible truncation occurring in labels.")
 
     return {
         "input_ids": model_inputs["input_ids"],
@@ -85,11 +97,12 @@ if __name__ == "__main__":
         "--model", type=str, default="microsoft/GODEL-v1_1-base-seq2seq"
     )
     parser.add_argument("--preprocess_batch_size", type=int, default=256)
-    parser.add_argument("--max_input_length", type=int, default=256)
-    parser.add_argument("--max_output_length", type=int, default=64)
-    parser.add_argument("--train_batch_size", type=int, default=8)
+    parser.add_argument("--max_input_length", type=int, default=512)
+    parser.add_argument("--max_output_length", type=int, default=256)
+    parser.add_argument("--candidates", type=int, default=10)
     parser.add_argument("--val_batch_size", type=int, default=16)
     parser.add_argument("--num_train_epochs", type=int, default=20)
+    parser.add_argument("--train_batch_size", type=int, default=8)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=8)
     parser.add_argument("--logging_steps", type=int, default=10)
     parser.add_argument(
@@ -98,12 +111,15 @@ if __name__ == "__main__":
     parser.add_argument("--eval_steps", type=int, default=1000)
     parser.add_argument("--save_steps", type=int, default=1000)
     parser.add_argument("--metric_for_best_model", type=str, default="rougeL")
+    parser.add_argument(
+        "--resume_from_checkpoint", default=False, action=BooleanOptionalAction
+    )
     args = parser.parse_args()
 
     # Load dataset
     tokenizer = AutoTokenizer.from_pretrained(args.model)
     data_files = {"train": args.train_dataset, "validation": args.val_dataset}
-    dataset = load_dataset("json", data_files=data_files)
+    dataset = load_dataset("json", data_files=data_files, field="data")
 
     # Prepare samples
     tokenizer = AutoTokenizer.from_pretrained("microsoft/GODEL-v1_1-base-seq2seq")
@@ -159,10 +175,10 @@ if __name__ == "__main__":
         else preprocess_logits_for_metrics,
         callbacks=[
             EarlyStoppingCallback(
-                early_stopping_patience=10, early_stopping_threshold=1e-4
+                early_stopping_patience=5, early_stopping_threshold=1e-4
             )
         ],
     )
 
     # Train
-    trainer.train()
+    trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)

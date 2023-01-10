@@ -3,14 +3,13 @@ import json
 import random
 import re
 
-import jsonlines
 from tqdm import tqdm
 
 
 def get_sample(args, data, index_data, anchor, candidates):
     # Get context and response
     context, response = data[anchor]["text"].rsplit("\n", 1)
-    context = context.replace("\n", " EOS ")
+    context = context.split("\n")
 
     # Select candidates
     if args.mode == "none":
@@ -25,21 +24,20 @@ def get_sample(args, data, index_data, anchor, candidates):
         )[: args.candidates]
 
     # Get knowledge from candidates
-    candidates = [
+    knowledge = [
         index_data[candidate]["text"].rsplit("\n", 1)[1] for candidate in candidates
     ]
-    knowledge = " | ".join(candidates)
 
     # Clean white spaces
-    context = re.sub(" +", " ", context)
-    knowledge = re.sub(" +", " ", knowledge)
+    context = [re.sub(" +", " ", sentence).strip(" ") for sentence in context]
+    knowledge = [re.sub(" +", " ", sentence) for sentence in knowledge]
     response = re.sub(" +", " ", response)
 
     return {
         "id": anchor,
-        "Context": context,
-        "Knowledge": knowledge,
-        "Response": response,
+        "context": context,
+        "knowledge": knowledge,
+        "response": response,
     }
 
 
@@ -74,8 +72,8 @@ def build_generate_dataset(args):
     ]
 
     # Save dataset
-    with jsonlines.open(args.dataset_output, mode="w") as writer:
-        writer.write_all(output)
+    with open(args.dataset_output, mode="w") as f:
+        json.dump({"version": args.version, "data": output}, f, indent=4)
 
 
 if __name__ == "__main__":
@@ -86,8 +84,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--mode", type=str, choices=["none", "random", "sample", "best"], required=True
     )
-    parser.add_argument("--candidates", type=int, default=3)
+    parser.add_argument("--candidates", type=int, default=10)
     parser.add_argument("--dataset_output", type=str, required=True)
+    parser.add_argument("--version", type=str, required=True)
     args = parser.parse_args()
 
     build_generate_dataset(args)

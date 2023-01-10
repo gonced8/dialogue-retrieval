@@ -3,34 +3,32 @@ import json
 import random
 import re
 
-import jsonlines
 from tqdm import tqdm
 
 
 def get_sample(args, index_data, sample):
-    # Get context and response
-    context = sample["context"].replace("\n", " EOS ")
+    # Get context
+    context = sample["context"].split("\n")
 
     # Get knowledge from candidates
     candidates = sample["candidate"][: args.candidates]
-    candidates = [
+    knowledge = [
         index_data[candidate]["text"].rsplit("\n", 1)[1] for candidate in candidates
     ]
-    knowledge = " | ".join(candidates)
 
     # Get response
     response = sample["truth_answer"]
 
     # Clean white spaces
-    context = re.sub(" +", " ", context)
-    knowledge = re.sub(" +", " ", knowledge)
+    context = [re.sub(" +", " ", sentence).strip(" ") for sentence in context]
+    knowledge = [re.sub(" +", " ", sentence) for sentence in knowledge]
     response = re.sub(" +", " ", response)
 
     return {
         "id": sample["id"],
-        "Context": context,
-        "Knowledge": knowledge,
-        "Response": response,
+        "context": context,
+        "knowledge": knowledge,
+        "response": response,
     }
 
 
@@ -53,16 +51,17 @@ def build_generate_dataset(args):
     ]
 
     # Save dataset
-    with jsonlines.open(args.dataset_output, mode="w") as writer:
-        writer.write_all(output)
+    with open(args.dataset_output, mode="w") as f:
+        json.dump({"version": args.version, "data": output}, f, indent=4)
 
 
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--index_dataset", type=str, required=True)
     parser.add_argument("--retrieval_results", type=str, required=True)
-    parser.add_argument("--candidates", type=int, default=3)
+    parser.add_argument("--candidates", type=int, default=10)
     parser.add_argument("--dataset_output", type=str, required=True)
+    parser.add_argument("--version", type=str, required=True)
     args = parser.parse_args()
 
     build_generate_dataset(args)

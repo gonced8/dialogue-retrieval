@@ -57,7 +57,7 @@ if __name__ == "__main__":
     parser.add_argument("--preprocess_batch_size", type=int, default=256)
     parser.add_argument("--max_input_length", type=int, default=256)
     parser.add_argument("--max_output_length", type=int, default=64)
-    parser.add_argument("--test_batch_size", type=int, default=24)
+    parser.add_argument("--test_batch_size", type=int, default=32)
     parser.add_argument(
         "--predict_with_generate", default=True, action=BooleanOptionalAction
     )
