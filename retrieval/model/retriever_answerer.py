@@ -161,9 +161,11 @@ class RetrieverAnswererer(pl.LightningModule):
         ]
 
         # Get truth and model answers and remove "SYSTEM: "
-        start = len("SYSTEM: ")
-        truth_answers = [answer[start:] for answer in batch["answers"]]
-        model_answers = [text.rsplit("\n", 1)[1][start:] for text in texts]
+        # start = len("SYSTEM: ")
+        # truth_answers = [answer[start:] for answer in batch["answers"]]
+        # model_answers = [text.rsplit("\n", 1)[1][start:] for text in texts]
+        truth_answers = [answer for answer in batch["answers"]]
+        model_answers = [text.rsplit("\n", 1)[1] for text in texts]
 
         # Compute metrics
         rouge_score = [
@@ -209,9 +211,11 @@ class RetrieverAnswererer(pl.LightningModule):
         ]
 
         # Get truth and model answers and remove "SYSTEM: "
-        start = len("SYSTEM: ")
-        truth_answers = [answer[start:] for answer in batch["answers"]]
-        model_answers = [text.rsplit("\n", 1)[1][start:] for text in texts]
+        # start = len("SYSTEM: ")
+        # truth_answers = [answer[start:] for answer in batch["answers"]]
+        # model_answers = [text.rsplit("\n", 1)[1][start:] for text in texts]
+        truth_answers = [answer for answer in batch["answers"]]
+        model_answers = [text.rsplit("\n", 1)[1] for text in texts]
 
         # Compute metrics
         rouge_score = [

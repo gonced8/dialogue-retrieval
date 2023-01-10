@@ -116,7 +116,7 @@ if __name__ == "__main__":
     )
 
     # Load model
-    model = AutoModelForSeq2SeqLM.from_pretrained("microsoft/GODEL-v1_1-base-seq2seq")
+    model = AutoModelForSeq2SeqLM.from_pretrained(args.model)
 
     # Setup data collator
     data_collator = DataCollatorForSeq2Seq(
