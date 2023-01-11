@@ -12,31 +12,47 @@ from transformers import (
 
 
 def build_samples(samples):
-    inputs_text = []
+    input_texts = []
 
-    for context, knowledge in zip(samples["Context"], samples["Knowledge"]):
-        input_text = context
-        if knowledge and args.retrieval:
+    for context, knowledge in zip(samples["context"], samples["knowledge"]):
+        input_text = " EOS ".join(context)
+        if knowledge and args.candidates > 0:
+            knowledge = " | ".join(knowledge[: args.candidates])
             input_text += " <|Knowledge|> " + knowledge
         input_text += " => "
 
-        inputs_text.append(input_text)
+        input_texts.append(input_text)
 
     model_inputs = tokenizer(
-        inputs_text,
+        input_texts,
         max_length=args.max_input_length,
         truncation=True,
+        return_length=True,
     )
+
+    # Verify if possible truncation
+    if any(
+        sample_len == args.max_input_length for sample_len in model_inputs["length"]
+    ):
+        print("WARNING: Possible truncation occurring in input_ids.")
 
     decoder_input_ids = tokenizer(
         tokenizer.pad_token + "SYSTEM: ",
         max_length=args.max_output_length,
         truncation=True,
         return_attention_mask=False,
+        return_length=True,
     )
-    decoder_input_ids = [
-        decoder_input_ids["input_ids"].copy() for _ in samples["Response"]
-    ]
+
+    # Verify if possible truncation
+    if any(
+        sample_len == args.max_output_length
+        for sample_len in decoder_input_ids["length"]
+    ):
+        print("WARNING: Possible truncation occurring in labels.")
+
+    # Repeat decoder input ids for every sample
+    decoder_input_ids = [decoder_input_ids["input_ids"].copy() for _ in samples["id"]]
 
     return {
         "input_ids": model_inputs["input_ids"],
@@ -55,18 +71,18 @@ if __name__ == "__main__":
         "--model", type=str, default="microsoft/GODEL-v1_1-base-seq2seq"
     )
     parser.add_argument("--preprocess_batch_size", type=int, default=256)
-    parser.add_argument("--max_input_length", type=int, default=256)
-    parser.add_argument("--max_output_length", type=int, default=64)
+    parser.add_argument("--max_input_length", type=int, default=512)
+    parser.add_argument("--max_output_length", type=int, default=256)
+    parser.add_argument("--candidates", type=int, default=10)
     parser.add_argument("--test_batch_size", type=int, default=32)
     parser.add_argument(
         "--predict_with_generate", default=True, action=BooleanOptionalAction
     )
-    parser.add_argument("--retrieval", default=True, action=BooleanOptionalAction)
     args = parser.parse_args()
 
     # Load dataset
     data_files = {"test": args.test_dataset}
-    dataset = load_dataset("json", data_files=data_files)
+    dataset = load_dataset("json", data_files=data_files, field="data")
 
     # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained("microsoft/GODEL-v1_1-base-seq2seq")
@@ -110,17 +126,17 @@ if __name__ == "__main__":
     )
 
     # Save results
-    dataset.set_format(type=None, columns=["id", "Context", "Response"])
+    dataset.set_format(type=None, columns=["id", "context", "response"])
     results = []
     for sample, prediction in zip(dataset["test"], predictions):
         results.append(
             {
                 "id": sample["id"],
-                "context": sample["Context"].replace(" EOS ", "\n"),
-                "truth_answer": sample["Response"],
+                "context": sample["context"],
+                "truth_answer": sample["response"],
                 "model_answer": prediction,
             }
         )
 
     with open(args.results, "w") as f:
-        json.dump(results, f, indent=4)
+        json.dump({"version": args.experiment_name, "data": results}, f, indent=4)

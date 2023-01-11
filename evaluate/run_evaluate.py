@@ -1,6 +1,7 @@
 from argparse import ArgumentParser
 import json
 
+from datasets import load_dataset
 import evaluate
 import numpy as np
 
@@ -17,14 +18,14 @@ if __name__ == "__main__":
     bertscore = evaluate.load("bertscore")
 
     # Load results
-    with open(args.results, "r") as f:
-        results = json.load(f)
+    data_files = {"test": args.results}
+    results = load_dataset("json", data_files=data_files, field="data")
 
-    references = [sample["truth_answer"] for sample in results]
-    predictions = [sample["model_answer"] for sample in results]
+    references = [sample["truth_answer"] for sample in results["test"]]
+    predictions = [sample["model_answer"] for sample in results["test"]]
 
     # Evaluate
-    print("Computing BERT...")
+    print("Computing BLEU...")
     bleu_score = bleu.compute(predictions=predictions, references=references)
     print("Computing ROUGE...")
     rouge_score = rouge.compute(

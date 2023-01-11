@@ -22,6 +22,18 @@ def get_sample(args, data, index_data, anchor, candidates):
         candidates = sorted(
             candidates, key=lambda d_id: candidates[d_id]["answer_rougeL"], reverse=True
         )[: args.candidates]
+    elif args.mode == "best_shuffle":
+        candidates = sorted(
+            candidates, key=lambda d_id: candidates[d_id]["answer_rougeL"], reverse=True
+        )[: args.candidates]
+        random.shuffle(candidates)
+    elif args.mode == "sample_best":
+        sample_candidates = random.sample(list(candidates.keys()), args.candidates)
+        candidates = sorted(
+            sample_candidates,
+            key=lambda d_id: candidates[d_id]["answer_rougeL"],
+            reverse=True,
+        )
 
     # Get knowledge from candidates
     knowledge = [
@@ -82,7 +94,10 @@ if __name__ == "__main__":
     parser.add_argument("--index_dataset", type=str, required=True)
     parser.add_argument("--retrieval_results", type=str, required=True)
     parser.add_argument(
-        "--mode", type=str, choices=["none", "random", "sample", "best"], required=True
+        "--mode",
+        type=str,
+        choices=["none", "random", "sample", "best", "best_shuffle", "sample_best"],
+        required=True,
     )
     parser.add_argument("--candidates", type=int, default=10)
     parser.add_argument("--dataset_output", type=str, required=True)

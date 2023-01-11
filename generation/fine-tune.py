@@ -100,9 +100,9 @@ if __name__ == "__main__":
     parser.add_argument("--max_input_length", type=int, default=512)
     parser.add_argument("--max_output_length", type=int, default=256)
     parser.add_argument("--candidates", type=int, default=10)
-    parser.add_argument("--val_batch_size", type=int, default=16)
     parser.add_argument("--num_train_epochs", type=int, default=20)
     parser.add_argument("--train_batch_size", type=int, default=8)
+    parser.add_argument("--val_batch_size", type=int, default=8)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=8)
     parser.add_argument("--logging_steps", type=int, default=10)
     parser.add_argument(
