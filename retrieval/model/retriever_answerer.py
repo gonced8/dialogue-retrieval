@@ -1,3 +1,4 @@
+from argparse import BooleanOptionalAction
 import json
 from pathlib import Path
 import psutil
@@ -8,6 +9,8 @@ import numpy as np
 import pytorch_lightning as pl
 from rouge_score import rouge_scorer
 from sentence_transformers import SentenceTransformer
+from sentence_transformers.losses import MultipleNegativesRankingLoss
+from sentence_transformers import util
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -30,8 +33,14 @@ class RetrieverAnswererer(pl.LightningModule):
         self.model_name = self.hparams.model_name
 
         # Initialize retriever encoder
-        self.retriever_encoder = SentenceTransformer(self.hparams.retriever_encoder)
-        self.retriever_tokenizer = self.retriever_encoder.tokenizer
+        self.retriever_encoder_q = SentenceTransformer(self.hparams.retriever_encoder)
+        if self.hparams.dual:
+            self.retriever_encoder_a = SentenceTransformer(
+                self.hparams.retriever_encoder
+            )
+        else:
+            self.retriever_encoder_a = self.retriever_encoder_q
+        self.retriever_tokenizer = self.retriever_encoder_q.tokenizer
 
         # Load index
         if self.hparams.index_directory is not None:
@@ -51,14 +60,21 @@ class RetrieverAnswererer(pl.LightningModule):
         self.seed = self.hparams.seed
 
         # Loss
-        self.triplet_loss = torch.nn.TripletMarginLoss()
+        if self.hparams.loss == "triplet":
+            self.loss = torch.nn.TripletMarginLoss(
+                margin=self.hparams.margin, p=self.hparams.p
+            )
+        elif self.hparams.loss == "multiple_negatives":
+            self.loss = MultipleNegativesRankingLoss(
+                model=self.retriever_encoder, scale=1.0, similarity_fct=util.dot_score
+            )
 
         # Metrics
         self.rouge = rouge_scorer.RougeScorer(["rouge1", "rouge2", "rougeL"])
 
     def retrieve(self, batch):
         # Encode
-        embeddings = self.retriever_encoder(batch["context_tokenized"])[
+        embeddings = self.retriever_encoder_q(batch["context_tokenized"])[
             "sentence_embedding"
         ]
 
@@ -107,11 +123,21 @@ class RetrieverAnswererer(pl.LightningModule):
         print()
 
     def training_step(self, batch, batch_idx):
-        anchor = self.retriever_encoder(batch["anchor"])["sentence_embedding"]
-        positive = self.retriever_encoder(batch["positive"])["sentence_embedding"]
-        negative = self.retriever_encoder(batch["negative"])["sentence_embedding"]
+        if self.hparams.loss == "triplet":
+            anchor = self.retriever_encoder_q(batch["anchor"])["sentence_embedding"]
+            positive = self.retriever_encoder_a(batch["positive"])["sentence_embedding"]
+            negative = self.retriever_encoder_a(batch["negative"])["sentence_embedding"]
 
-        loss = self.triplet_loss(anchor, positive, negative)
+            loss = self.loss(anchor, positive, negative)
+
+            # Artificial negative examples
+            for i in range(self.hparams.negative_examples):
+                loss += self.hparams.negatives_loss_scale * self.loss(
+                    anchor, positive, torch.roll(negative, i, 0)
+                )
+
+        elif self.hparams.loss == "multiple_negatives":
+            loss = self.loss([batch["anchor"], batch["positive"]], torch.Tensor())
 
         self.log("train_loss", loss)
         return loss
@@ -125,10 +151,11 @@ class RetrieverAnswererer(pl.LightningModule):
             tqdm(self.data.index_dataloader(), desc="Calculating embeddings")
         ):
             # Get input_ids and attention_mask into device
-            x = {k: v.to(self.device) for k, v in batch["context_tokenized"].items()}
+            # x = {k: v.to(self.device) for k, v in batch["context_tokenized"].items()}
+            x = {k: v.to(self.device) for k, v in batch["answer_tokenized"].items()}
 
             # Compute dialogue embeddings
-            embeddings = self.retriever_encoder(x)["sentence_embedding"]
+            embeddings = self.retriever_encoder_a(x)["sentence_embedding"]
 
             # Add embeddings to cache
             all_embeddings.append(embeddings.cpu().numpy())
@@ -146,6 +173,7 @@ class RetrieverAnswererer(pl.LightningModule):
             max_index_memory_usage="32G",
             current_memory_available=current_memory_available,
             metric_type="ip",
+            # metric_type="l2",
             save_on_disk=False,
         )
 
@@ -255,4 +283,15 @@ class RetrieverAnswererer(pl.LightningModule):
         parser.add_argument("--index_directory", type=str)
         parser.add_argument("--index_dataset", type=str)
         parser.add_argument("--n_candidates", type=int, required=True)
+        parser.add_argument(
+            "--loss",
+            type=str,
+            choices=["triplet", "multiple_negatives"],
+            default="triplet",
+        )
+        parser.add_argument("--negative_examples", type=int, default=0)
+        parser.add_argument("--negatives_loss_scale", type=float, default=1.0)
+        parser.add_argument("--margin", type=float, default=1.0)
+        parser.add_argument("--p", type=int, default=2)
+        parser.add_argument("--dual", default=False, action=BooleanOptionalAction)
         return parent_parser

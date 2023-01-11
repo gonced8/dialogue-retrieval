@@ -5,6 +5,7 @@ args=(
 	--model_name retriever_answerer
 	--retriever_encoder sentence-transformers/all-mpnet-base-v2
     --n_candidates 10
+    #--negative_examples
 
     # Data
 	--data_name multiwoz_dialogue
@@ -21,11 +22,11 @@ args=(
     # Trainer
     --mode train
     --lr 1e-5
-    --accumulate_grad_batches 4
+    --accumulate_grad_batches 8
     --max_epochs 20
 	--check_val_every_n_epoch 1
     --val_check_interval 0.5
-	--log_every_n_steps 1
+	--log_every_n_steps 10
 	--enable_checkpointing
 	--default_root_dir checkpoints
     --monitor rougeL

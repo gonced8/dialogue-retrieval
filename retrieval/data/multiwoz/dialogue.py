@@ -5,7 +5,6 @@ import random
 
 import pytorch_lightning as pl
 import torch
-from tqdm import tqdm
 
 from utils import get_text
 
@@ -92,7 +91,8 @@ class MultiWOZDialogueDataModule(pl.LightningDataModule):
             self.train_data,
             batch_size=self.hparams.index_batch_size,
             num_workers=self.hparams.num_workers,
-            collate_fn=self.collate_fn_test,
+            # collate_fn=self.collate_fn_test,
+            collate_fn=self.collate_fn_index,
             shuffle=False,
             pin_memory=bool(torch.cuda.device_count()),
         )
@@ -111,7 +111,11 @@ class MultiWOZDialogueDataModule(pl.LightningDataModule):
         # Get anchor, positive, negative texts
         texts = {}
         for k in batch[0].keys():
-            texts[k] = [get_text(sample[k], "context") for sample in batch]
+            texts[k] = [
+                # get_text(sample[k], "context")
+                get_text(sample[k], "context" if k == "anchor" else "answer")
+                for sample in batch
+            ]
 
         # Tokenize and convert to tensors
         if self.tokenizer is not None:
@@ -157,6 +161,34 @@ class MultiWOZDialogueDataModule(pl.LightningDataModule):
             "contexts": contexts,
             "answers": answers,
             "context_tokenized": context_tokenized,
+        }
+
+    def collate_fn_index(self, batch):
+        # Get ids
+        ids = [sample["id"] for sample in batch]
+
+        # Get data
+        contexts = [sample["text"].rsplit("\n", 1)[0] for sample in batch]
+        answers = [sample["text"].rsplit("\n", 1)[1] for sample in batch]
+
+        # Tokenize and convert to tensors
+        if self.tokenizer is not None:
+            tokenized = self.tokenizer(
+                # context,
+                answers,
+                padding=True,
+                truncation=True,
+                return_tensors="pt",
+            )
+        else:
+            tokenized = None
+
+        return {
+            "ids": ids,
+            "contexts": contexts,
+            "answers": answers,
+            # "context_tokenized": tokenized,
+            "answer_tokenized": tokenized,
         }
 
     @staticmethod
