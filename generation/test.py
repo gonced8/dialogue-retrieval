@@ -126,7 +126,7 @@ if __name__ == "__main__":
     )
 
     # Save results
-    dataset.set_format(type=None, columns=["id", "context", "response"])
+    dataset.set_format(type=None, columns=["id", "context", "knowledge", "response"])
     results = []
     for sample, prediction in zip(dataset["test"], predictions):
         results.append(
@@ -135,6 +135,7 @@ if __name__ == "__main__":
                 "context": sample["context"],
                 "truth_answer": sample["response"],
                 "model_answer": prediction,
+                "knowledge": sample["knowledge"][: args.candidates],
             }
         )
 

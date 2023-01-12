@@ -66,7 +66,7 @@ class RetrieverAnswererer(pl.LightningModule):
             )
         elif self.hparams.loss == "multiple_negatives":
             self.loss = MultipleNegativesRankingLoss(
-                model=self.retriever_encoder, scale=1.0, similarity_fct=util.dot_score
+                model=self.retriever_encoder_q, scale=1.0, similarity_fct=util.dot_score
             )
 
         # Metrics
@@ -152,7 +152,7 @@ class RetrieverAnswererer(pl.LightningModule):
         ):
             # Get input_ids and attention_mask into device
             # x = {k: v.to(self.device) for k, v in batch["context_tokenized"].items()}
-            x = {k: v.to(self.device) for k, v in batch["answer_tokenized"].items()}
+            x = {k: v.to(self.device) for k, v in batch["tokenized"].items()}
 
             # Compute dialogue embeddings
             embeddings = self.retriever_encoder_a(x)["sentence_embedding"]

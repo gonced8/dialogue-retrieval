@@ -114,6 +114,7 @@ class MultiWOZDialogueDataModule(pl.LightningDataModule):
             texts[k] = [
                 # get_text(sample[k], "context")
                 get_text(sample[k], "context" if k == "anchor" else "answer")
+                # sample[k]["text"]
                 for sample in batch
             ]
 
@@ -176,6 +177,7 @@ class MultiWOZDialogueDataModule(pl.LightningDataModule):
             tokenized = self.tokenizer(
                 # context,
                 answers,
+                # [sample["text"] for sample in batch],
                 padding=True,
                 truncation=True,
                 return_tensors="pt",
@@ -187,8 +189,7 @@ class MultiWOZDialogueDataModule(pl.LightningDataModule):
             "ids": ids,
             "contexts": contexts,
             "answers": answers,
-            # "context_tokenized": tokenized,
-            "answer_tokenized": tokenized,
+            "tokenized": tokenized,
         }
 
     @staticmethod
