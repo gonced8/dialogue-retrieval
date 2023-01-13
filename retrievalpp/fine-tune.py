@@ -3,15 +3,17 @@ from argparse import ArgumentParser, BooleanOptionalAction
 from datasets import load_dataset
 import evaluate
 from sacrebleu.metrics import BLEU
+from rouge_score.rouge_scorer import RougeScorer
 from sentence_transformers import SentenceTransformer
 from sentence_transformers.util import pairwise_dot_score
 import torch
 from transformers import (
-    DataCollatorForSeq2Seq,
     EarlyStoppingCallback,
     TrainingArguments,
     Trainer,
 )
+
+from data_collator import DataCollatorWithPaddingAndText
 
 
 def build_samples(samples, args, tokenizer):
@@ -71,33 +73,40 @@ def compute_metrics(eval_pred):
     rouge_score = rouge.compute(
         predictions=predictions,
         references=references,
-        rouge_types=["rouge1", "rouge2", "rougeL"],
+        rouge_types=["rougeL"],
     )
 
     return {"bleu": bleu_score["bleu"], **rouge_score}
 
 
-def heuristic_score(bleu, answers):
+def heuristic_score(heuristic_fn, answers, device):
     scores = []
 
-    for reference in answers[:-1]:
-        for hypothesis in answers[1:]:
-            score = bleu.sentence_score(hyphotesis=hypothesis, references=[reference])
-            scores.append(score)
+    for i, reference in enumerate(answers[:-1]):
+        for j, hypothesis in enumerate(answers[i + 1 :]):
+            scores.append(heuristic_fn(hypothesis, reference))
 
-    return torch.FloatTensor(scores).view(-1, 1)
+    return torch.tensor(scores, device=device).view(-1)
 
 
 def model_score(embeddings):
     n, d = embeddings.shape
 
     references_index = (
-        torch.LongTensor([i for i in range(n - 1) for j in range(n - 1 - i)])
+        torch.tensor(
+            [i for i in range(n - 1) for j in range(n - 1 - i)],
+            dtype=torch.long,
+            device=embeddings.device,
+        )
         .view(-1, 1)
         .expand(-1, d)
     )
     hypothesis_index = (
-        torch.LongTensor([j for i in range(1, n) for j in range(i + 1, n)])
+        torch.tensor(
+            [j for i in range(1, n) for j in range(i, n)],
+            dtype=torch.long,
+            device=embeddings.device,
+        )
         .view(-1, 1)
         .expand(-1, d)
     )
@@ -108,18 +117,21 @@ def model_score(embeddings):
     return pairwise_dot_score(references, hypothesis)
 
 
-def compare_rank_scores(scores_h, scores_m):
-    n, d = scores_m.shape
+def compare_rank_scores(scores_h, scores_m, b=None):
+    n = scores_m.size(0)
 
-    index_i = (
-        torch.LongTensor([i for i in range(n - 1) for j in range(n - 1 - i)])
-        .view(-1, 1)
-        .expand(-1, d)
+    index_i = [i for i in range(n - 1) for j in range(n - 1 - i)]
+    index_j = [j for i in range(1, n) for j in range(i, n)]
+
+    index_i = torch.tensor(
+        index_i,
+        dtype=torch.long,
+        device=scores_m.device,
     )
-    index_j = (
-        torch.LongTensor([j for i in range(1, n) for j in range(i + 1, n)])
-        .view(-1, 1)
-        .expand(-1, d)
+    index_j = torch.tensor(
+        index_j,
+        dtype=torch.long,
+        device=scores_m.device,
     )
 
     scores_h_i = torch.gather(scores_h, dim=0, index=index_i)
@@ -131,15 +143,38 @@ def compare_rank_scores(scores_h, scores_m):
 
 
 class RetrievalTrainer(Trainer):
-    def __init__(self, **kwargs):
+    def __init__(self, heuristic="bleu", loss_student_scale=1.0, **kwargs):
         super().__init__(**kwargs)
-        self.bleu = BLEU(effective_order=True)
+        if heuristic == "bleu":
+            self.heuristic = BLEU(effective_order=True)
+            self.heuristic_fn = (
+                lambda hypothesis, reference: self.heuristic.sentence_score(
+                    hypothesis=hypothesis, references=[reference]
+                ).score
+                / 100
+            )
+        elif heuristic == "rouge":
+            self.heuristic = RougeScorer(["rougeL"])
+            self.heuristic_fn = lambda hypothesis, reference: self.heuristic.score(
+                target=reference, prediction=hypothesis
+            )["rougeL"].fmeasure
+        self.loss_student_scale = loss_student_scale
 
     def compute_loss(self, model, inputs, return_outputs=False):
-        outputs = model(**inputs)["sentence_embedding"]
+        outputs = model(
+            {
+                "input_ids": inputs["input_ids"],
+                "attention_mask": inputs["attention_mask"],
+            }
+        )["sentence_embedding"]
 
-        scores_h = heuristic_score(self.bleu, inputs["answer"])
-        scores_m = model_score(outputs)
+        scores_h = heuristic_score(self.heuristic_fn, inputs["answer"], outputs.device)
+        scores_m = model_score(outputs) * self.loss_student_scale
+
+        # print("Scores Heuristic", scores_h, "", sep="\n")
+        # print("Scores Model", scores_m, "", sep="\n")
+        # print("========================================")
+        # input()
 
         diff = compare_rank_scores(scores_h, scores_m)
         loss = torch.mean(diff**2, dim=0)
@@ -160,9 +195,10 @@ if __name__ == "__main__":
     parser.add_argument("--preprocess_batch_size", type=int, default=256)
     parser.add_argument("--max_length", type=int, default=384)
     parser.add_argument("--num_train_epochs", type=int, default=20)
-    parser.add_argument("--train_batch_size", type=int, default=8)
-    parser.add_argument("--val_batch_size", type=int, default=8)
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=8)
+    parser.add_argument("--learning_rate", type=float, default=5e-5)
+    parser.add_argument("--train_batch_size", type=int, default=32)
+    parser.add_argument("--val_batch_size", type=int, default=32)
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=2)
     parser.add_argument("--logging_steps", type=int, default=10)
     parser.add_argument("--eval_steps", type=int, default=1000)
     parser.add_argument("--save_steps", type=int, default=1000)
@@ -176,6 +212,10 @@ if __name__ == "__main__":
         choices=["context", "answer", "conversation"],
         default="context",
     )
+    parser.add_argument(
+        "--heuristic", type=str, choices=["bleu", "rouge"], default="bleu"
+    )
+    parser.add_argument("--loss_student_scale", type=float, default=1.0)
     args = parser.parse_args()
 
     # Initialize model and tokenizer
@@ -198,13 +238,12 @@ if __name__ == "__main__":
         fn_kwargs={"args": args, "tokenizer": tokenizer},
     )
     dataset.set_format(
-        type="torch",
-        columns=["id", "answer", "input_ids", "attention_mask"],
+        type="torch", columns=["input_ids", "attention_mask"], output_all_columns=True
     )
 
     # Setup data collator
-    data_collator = DataCollatorForSeq2Seq(
-        tokenizer=tokenizer, model=model, padding="longest"
+    data_collator = DataCollatorWithPaddingAndText(
+        tokenizer=tokenizer, padding="longest"
     )
 
     # Setup training arguments
@@ -219,23 +258,27 @@ if __name__ == "__main__":
         logging_steps=args.logging_steps,
         save_steps=args.save_steps,
         save_total_limit=1,
-        metric_for_best_model=f"eval_{args.metric_for_best_model}",
-        load_best_model_at_end=True,
+        # metric_for_best_model=f"eval_{args.metric_for_best_model}",
+        # load_best_model_at_end=True,
+        remove_unused_columns=False,
+        learning_rate=args.learning_rate,
     )
 
     # Create Trainer
-    trainer = Trainer(
+    trainer = RetrievalTrainer(
         model=model,
         args=training_args,
         data_collator=data_collator,
         train_dataset=dataset["train"],
         eval_dataset=dataset["validation"],
-        compute_metrics=compute_metrics,
-        callbacks=[
-            EarlyStoppingCallback(
-                early_stopping_patience=5, early_stopping_threshold=1e-4
-            )
-        ],
+        # compute_metrics=compute_metrics,
+        # callbacks=[
+        #    EarlyStoppingCallback(
+        #        early_stopping_patience=5, early_stopping_threshold=1e-4
+        #    )
+        # ],
+        heuristic=args.heuristic,
+        loss_student_scale=args.loss_student_scale,
     )
 
     # Train
