@@ -1,19 +1,23 @@
 from argparse import ArgumentParser, BooleanOptionalAction
+import json
 
 from datasets import load_dataset
 import evaluate
 from sacrebleu.metrics import BLEU
 from rouge_score.rouge_scorer import RougeScorer
 from sentence_transformers import SentenceTransformer
-from sentence_transformers.util import pairwise_dot_score
-import torch
+from torch import nn
 from transformers import (
+    AutoTokenizer,
     EarlyStoppingCallback,
     TrainingArguments,
     Trainer,
 )
 
 from data_collator import DataCollatorWithPaddingAndText
+from losses import *
+from model import Encoder
+from retrieval import generate_index, retrieve
 
 
 def build_samples(samples, args, tokenizer):
@@ -49,101 +53,34 @@ def build_samples(samples, args, tokenizer):
     }
 
 
-def compute_metrics(eval_pred):
-    # Load metrics
-    bleu = evaluate.load("bleu")
-    rouge = evaluate.load("rouge")
+class RetrievalMetrics:
+    def __init__(self, train_dataset):
+        with open(train_dataset, "r") as f:
+            data = json.load(f)["data"]
+        self.dataset = {sample["id"]: sample["text"][-1] for sample in data}
+        self.ids_labels = None
 
-    pred_ids, labels = eval_pred
+        # Load metrics
+        self.bleu = evaluate.load("bleu")
+        self.rouge = evaluate.load("rouge")
 
-    # Pad masked tokens
-    pred_ids[pred_ids == -100] = tokenizer.pad_token_id
-    labels[labels == -100] = tokenizer.pad_token_id
+    def __call__(self, eval_pred):
+        candidates_ids = eval_pred.predictions
+        candidates = [
+            [self.dataset[self.ids_labels[i]] for i in sample_candidates]
+            for sample_candidates in candidates_ids
+        ]
+        answers = eval_pred.inputs
+        print(answers)
+        input()
 
-    # Decode tensors
-    predictions = tokenizer.batch_decode(
-        pred_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True
-    )
-    references = tokenizer.batch_decode(
-        labels, skip_special_tokens=True, clean_up_tokenization_spaces=True
-    )
-
-    # Compute metrics
-    bleu_score = bleu.compute(predictions=predictions, references=references)
-    rouge_score = rouge.compute(
-        predictions=predictions,
-        references=references,
-        rouge_types=["rougeL"],
-    )
-
-    return {"bleu": bleu_score["bleu"], **rouge_score}
-
-
-def heuristic_score(heuristic_fn, answers, device):
-    scores = []
-
-    for i, reference in enumerate(answers[:-1]):
-        for j, hypothesis in enumerate(answers[i + 1 :]):
-            scores.append(heuristic_fn(hypothesis, reference))
-
-    return torch.tensor(scores, device=device).view(-1)
-
-
-def model_score(embeddings):
-    n, d = embeddings.shape
-
-    references_index = (
-        torch.tensor(
-            [i for i in range(n - 1) for j in range(n - 1 - i)],
-            dtype=torch.long,
-            device=embeddings.device,
-        )
-        .view(-1, 1)
-        .expand(-1, d)
-    )
-    hypothesis_index = (
-        torch.tensor(
-            [j for i in range(1, n) for j in range(i, n)],
-            dtype=torch.long,
-            device=embeddings.device,
-        )
-        .view(-1, 1)
-        .expand(-1, d)
-    )
-
-    references = torch.gather(embeddings, dim=0, index=references_index)
-    hypothesis = torch.gather(embeddings, dim=0, index=hypothesis_index)
-
-    return pairwise_dot_score(references, hypothesis)
-
-
-def compare_rank_scores(scores_h, scores_m, b=None):
-    n = scores_m.size(0)
-
-    index_i = [i for i in range(n - 1) for j in range(n - 1 - i)]
-    index_j = [j for i in range(1, n) for j in range(i, n)]
-
-    index_i = torch.tensor(
-        index_i,
-        dtype=torch.long,
-        device=scores_m.device,
-    )
-    index_j = torch.tensor(
-        index_j,
-        dtype=torch.long,
-        device=scores_m.device,
-    )
-
-    scores_h_i = torch.gather(scores_h, dim=0, index=index_i)
-    scores_h_j = torch.gather(scores_h, dim=0, index=index_j)
-    scores_m_i = torch.gather(scores_m, dim=0, index=index_i)
-    scores_m_j = torch.gather(scores_m, dim=0, index=index_j)
-
-    return (scores_h_i - scores_h_j) - (scores_m_i - scores_m_j)
+        return None
 
 
 class RetrievalTrainer(Trainer):
-    def __init__(self, heuristic="bleu", loss_student_scale=1.0, **kwargs):
+    def __init__(
+        self, heuristic="bleu", loss_student_scale=1.0, n_candidates=10, **kwargs
+    ):
         super().__init__(**kwargs)
         if heuristic == "bleu":
             self.heuristic = BLEU(effective_order=True)
@@ -159,14 +96,10 @@ class RetrievalTrainer(Trainer):
                 target=reference, prediction=hypothesis
             )["rougeL"].fmeasure
         self.loss_student_scale = loss_student_scale
+        self.n_candidates = n_candidates
 
     def compute_loss(self, model, inputs, return_outputs=False):
-        outputs = model(
-            {
-                "input_ids": inputs["input_ids"],
-                "attention_mask": inputs["attention_mask"],
-            }
-        )["sentence_embedding"]
+        outputs = model(**inputs)
 
         scores_h = heuristic_score(self.heuristic_fn, inputs["answer"], outputs.device)
         scores_m = model_score(outputs) * self.loss_student_scale
@@ -176,10 +109,46 @@ class RetrievalTrainer(Trainer):
         # print("========================================")
         # input()
 
-        diff = compare_rank_scores(scores_h, scores_m)
-        loss = torch.mean(diff**2, dim=0)
+        loss = compare_rank_scores(scores_h, scores_m)
+        # loss = compare_rank_scores_neighbors(scores_h, scores_m, outputs.size(0))
+        # loss = compare_rank_scores_heuristic(scores_h, scores_m)
+        loss = torch.mean(loss)
 
         return (loss, outputs) if return_outputs else loss
+
+    def prediction_step(
+        self, model, inputs, prediction_loss_only=None, ignore_keys=None
+    ):
+        queries = [self.labels_ids[label] for label in inputs["id"]]
+        queries = torch.tensor(queries, dtype=torch.long)
+
+        inputs = self._prepare_inputs(inputs)
+        with torch.no_grad():
+            loss, outputs = self.compute_loss(model, inputs, return_outputs=True)
+            indices, _ = retrieve(
+                model,
+                None,
+                self.index,
+                self.n_candidates,
+                outputs=outputs,
+            )
+        candidates = torch.tensor(indices, dtype=torch.long)
+
+        return loss, candidates, queries
+
+    def evaluate(
+        self,
+        eval_dataset=None,
+        ignore_keys=None,
+        metric_key_prefix: str = "eval",
+    ):
+        # Generate index
+        train_dataloader = self.get_train_dataloader()
+        self.index, self.compute_metrics.ids_labels = generate_index(
+            train_dataloader, self.model
+        )
+
+        return super().evaluate(eval_dataset, ignore_keys, metric_key_prefix)
 
 
 if __name__ == "__main__":
@@ -190,7 +159,7 @@ if __name__ == "__main__":
     parser.add_argument("--val_dataset", type=str, required=True)
     parser.add_argument("--test_dataset", type=str)
     parser.add_argument(
-        "--model", type=str, default="sentence-transformers/all-mpnet-base-v2"
+        "--model", type=str, default="sentence-transformers/multi-qa-mpnet-base-dot-v1"
     )
     parser.add_argument("--preprocess_batch_size", type=int, default=256)
     parser.add_argument("--max_length", type=int, default=384)
@@ -210,17 +179,18 @@ if __name__ == "__main__":
         "--index",
         type=str,
         choices=["context", "answer", "conversation"],
-        default="context",
+        default="answer",
     )
     parser.add_argument(
-        "--heuristic", type=str, choices=["bleu", "rouge"], default="bleu"
+        "--heuristic", type=str, choices=["bleu", "rouge"], default="rouge"
     )
     parser.add_argument("--loss_student_scale", type=float, default=1.0)
+    parser.add_argument("--n_candidates", type=int, default=10)
     args = parser.parse_args()
 
     # Initialize model and tokenizer
-    model = SentenceTransformer(args.model)
-    tokenizer = model.tokenizer
+    model = Encoder(args.model)
+    tokenizer = AutoTokenizer.from_pretrained(args.model)
 
     # Load dataset
     data_files = {
@@ -238,7 +208,9 @@ if __name__ == "__main__":
         fn_kwargs={"args": args, "tokenizer": tokenizer},
     )
     dataset.set_format(
-        type="torch", columns=["input_ids", "attention_mask"], output_all_columns=True
+        type="torch",
+        columns=["input_ids", "attention_mask"],
+        output_all_columns=True,
     )
 
     # Setup data collator
@@ -258,10 +230,11 @@ if __name__ == "__main__":
         logging_steps=args.logging_steps,
         save_steps=args.save_steps,
         save_total_limit=1,
-        # metric_for_best_model=f"eval_{args.metric_for_best_model}",
-        # load_best_model_at_end=True,
+        metric_for_best_model=f"eval_{args.metric_for_best_model}",
+        load_best_model_at_end=True,
         remove_unused_columns=False,
         learning_rate=args.learning_rate,
+        include_inputs_for_metrics=True,
     )
 
     # Create Trainer
@@ -271,14 +244,15 @@ if __name__ == "__main__":
         data_collator=data_collator,
         train_dataset=dataset["train"],
         eval_dataset=dataset["validation"],
-        # compute_metrics=compute_metrics,
-        # callbacks=[
-        #    EarlyStoppingCallback(
-        #        early_stopping_patience=5, early_stopping_threshold=1e-4
-        #    )
-        # ],
+        compute_metrics=RetrievalMetrics(args.train_dataset),
+        callbacks=[
+            EarlyStoppingCallback(
+                early_stopping_patience=5, early_stopping_threshold=1e-4
+            )
+        ],
         heuristic=args.heuristic,
         loss_student_scale=args.loss_student_scale,
+        n_candidates=args.n_candidates,
     )
 
     # Train
