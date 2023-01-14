@@ -2,14 +2,24 @@ from sentence_transformers.util import cos_sim, pairwise_dot_score
 import torch
 
 
-def heuristic_score(heuristic_fn, answers, device):
+def heuristic_score(heuristic_fn, answers, device, square=None):
     scores = []
 
     for i, reference in enumerate(answers[:-1]):
         for j, hypothesis in enumerate(answers[i + 1 :]):
             scores.append(heuristic_fn(hypothesis, reference))
 
-    return torch.tensor(scores, device=device).view(-1)
+    scores = torch.tensor(scores, device=device).view(-1)
+
+    if square:
+        n = len(answers)
+        idx = torch.triu_indices(n, n, 1, device=device)
+        all_scores = torch.eye(n, dtype=torch.float, device=device)
+        all_scores[idx[0], idx[1]] = scores
+        all_scores[idx[1], idx[0]] = scores
+        return all_scores
+    else:
+        return scores
 
 
 def model_score(embeddings):

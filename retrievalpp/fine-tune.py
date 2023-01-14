@@ -6,7 +6,7 @@ from datasets import load_dataset
 import numpy as np
 from rouge_score.rouge_scorer import RougeScorer
 from sacrebleu.metrics import BLEU
-from sentence_transformers import SentenceTransformer
+from sentence_transformers.util import dot_score
 from tqdm.contrib import tzip
 from transformers import (
     AutoTokenizer,
@@ -22,35 +22,38 @@ from retrieval import generate_index, retrieve
 
 
 def build_samples(samples, indices, args, tokenizer):
-    texts = []
-    answers = []
+    # Select data
+    contexts = [" ".join(turns[:-1]) for turns in samples["text"]]
+    answers = [turns[-1] for turns in samples["text"]]
 
-    for turns in samples["text"]:
-        if args.index == "context":
-            text = " ".join(turns[:-1])
-        elif args.index == "answer":
-            text = turns[-1]
-        else:
-            text = " ".join(turns)
-
-        texts.append(text)
-        answers.append(text[-1])
-
-    model_inputs = tokenizer(
-        texts,
+    # Tokenize
+    context_inputs = tokenizer(
+        contexts,
         max_length=args.max_length,
         truncation=True,
         return_length=True,
     )
+    answer_inputs = tokenizer(
+        answers,
+        max_length=args.max_length,
+        truncation=True,
+        return_length=True,
+    )
+
     # Verify if possible truncation
-    if any(sample_len == args.max_length for sample_len in model_inputs["length"]):
+    if any(sample_len == args.max_length for sample_len in context_inputs["length"]):
+        print("WARNING: Possible truncation occurring in input_ids.")
+
+    if any(sample_len == args.max_length for sample_len in answer_inputs["length"]):
         print("WARNING: Possible truncation occurring in input_ids.")
 
     return {
         "idx": indices,
         "answer": answers,
-        "input_ids": model_inputs["input_ids"],
-        "attention_mask": model_inputs["attention_mask"],
+        "context_input_ids": context_inputs["input_ids"],
+        "context_attention_mask": context_inputs["attention_mask"],
+        "answer_input_ids": answer_inputs["input_ids"],
+        "answer_attention_mask": answer_inputs["attention_mask"],
     }
 
 
@@ -76,7 +79,6 @@ class RetrievalMetrics:
         answers = [next(islice(self.dataset.values(), i, i + 1)) for i in answers_ids]
 
         # Compute BLEUo scores
-        print("Computing BLEU")
         bleu_scores = np.array(
             [
                 [
@@ -103,12 +105,15 @@ class RetrievalMetrics:
         )
 
         # Get scores from best candidate and average
-        bleu_score = bleu_scores.max(1).mean()
-        rouge_score = rouge_scores.max(1).mean()
+        best_bleu = np.argmax(bleu_scores, axis=1)
+        best_rouge = np.argmax(bleu_scores, axis=1)
+
+        bleu_score = bleu_scores[best_bleu].mean()
+        rouge_score = rouge_scores[best_rouge].mean()
 
         # Compute MRR from BLEU and ROUGE
-        mrr_bleu = np.reciprocal(np.argmax(bleu_scores, axis=1) + 1).mean()
-        mrr_rouge = np.reciprocal(np.argmax(rouge_scores, axis=1) + 1).mean()
+        mrr_bleu = np.reciprocal(best_bleu + 1.0).mean()
+        mrr_rouge = np.reciprocal(best_rouge + 1.0).mean()
 
         return {
             "bleu": bleu_score,
@@ -143,11 +148,21 @@ class RetrievalTrainer(Trainer):
         self.n_candidates = n_candidates
 
     def compute_loss(self, model, inputs, return_outputs=False):
-        outputs = model(**inputs)
+        context_embeddings = model(
+            input_ids=inputs["context_input_ids"],
+            attention_mask=inputs["context_attention_mask"],
+        )
+        answer_embeddings = model(
+            input_ids=inputs["answer_input_ids"],
+            attention_mask=inputs["answer_attention_mask"],
+        )
 
-        scores_h = heuristic_score(self.heuristic_fn, inputs["answer"], outputs.device)
-        scores_m = model_score(outputs) * self.loss_student_scale
+        scores_h = heuristic_score(
+            self.heuristic_fn, inputs["answer"], context_embeddings.device
+        )
+        scores_m = dot_score(context_embeddings, answer_embeddings)
 
+        # TODO: HERE
         loss = compare_rank_scores(scores_h, scores_m)
         loss = torch.mean(loss)
 
@@ -204,10 +219,10 @@ if __name__ == "__main__":
     parser.add_argument("--train_batch_size", type=int, default=64)
     parser.add_argument("--val_batch_size", type=int, default=64)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
-    parser.add_argument("--logging_steps", type=int, default=10)
-    parser.add_argument("--eval_steps", type=int, default=1000)
-    parser.add_argument("--save_steps", type=int, default=1000)
-    parser.add_argument("--metric_for_best_model", type=str, default="bleu")
+    parser.add_argument("--logging_steps", type=int, default=20)
+    parser.add_argument("--eval_steps", type=int, default=2000)
+    parser.add_argument("--save_steps", type=int, default=2000)
+    parser.add_argument("--metric_for_best_model", type=str, default="rouge")
     parser.add_argument(
         "--resume_from_checkpoint", default=False, action=BooleanOptionalAction
     )
@@ -246,7 +261,13 @@ if __name__ == "__main__":
     )
     dataset.set_format(
         type="torch",
-        columns=["idx", "input_ids", "attention_mask"],
+        columns=[
+            "idx",
+            "context_input_ids",
+            "context_attention_mask",
+            "answer_input_ids",
+            "answer_attention_mask",
+        ],
         output_all_columns=True,
     )
 
@@ -283,7 +304,7 @@ if __name__ == "__main__":
         compute_metrics=RetrievalMetrics(args.train_dataset),
         callbacks=[
             EarlyStoppingCallback(
-                early_stopping_patience=5, early_stopping_threshold=1e-4
+                early_stopping_patience=10, early_stopping_threshold=1e-4
             )
         ],
         heuristic=args.heuristic,
