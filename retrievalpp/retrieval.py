@@ -26,9 +26,6 @@ def generate_index(index_dataloader, encoder):
         # Update ids_labels array
         ids_labels.extend(batch["id"])
 
-        # TODO: REMOVE
-        break
-
     all_embeddings = np.concatenate(all_embeddings)
 
     # Generate index
