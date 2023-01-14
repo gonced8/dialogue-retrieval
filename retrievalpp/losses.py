@@ -2,7 +2,7 @@ from sentence_transformers.util import cos_sim, pairwise_dot_score
 import torch
 
 
-def heuristic_score(heuristic_fn, answers, device, square=None):
+def heuristic_score(heuristic_fn, answers, device, square=True):
     scores = []
 
     for i, reference in enumerate(answers[:-1]):
@@ -99,6 +99,15 @@ def compare_rank_scores_heuristic(scores_h, scores_m):
     torch.sign(diff_scores_h, out=diff_scores_h)
 
     return torch.nn.functional.relu(-diff_scores_h * diff_scores_m)
+
+
+def compare_scores_diff(scores_h, scores_m):
+    n = scores_h.size(0)
+
+    diff_scores_h = scores_h.view(n, 1, -1) - scores_h.view(n, -1, 1)
+    diff_scores_m = scores_m.view(n, 1, -1) - scores_m.view(n, -1, 1)
+
+    return (diff_scores_h - diff_scores_m) ** 2
 
 
 class M3SE(torch.nn.Module):

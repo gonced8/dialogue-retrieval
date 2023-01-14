@@ -15,7 +15,7 @@ from transformers import (
     Trainer,
 )
 
-from data_collator import DataCollatorWithPaddingAndText
+from data_collator import RetrievalDataCollator
 from losses import *
 from model import Encoder
 from retrieval import generate_index, retrieve
@@ -45,13 +45,13 @@ def build_samples(samples, indices, args, tokenizer):
         print("WARNING: Possible truncation occurring in input_ids.")
 
     if any(sample_len == args.max_length for sample_len in answer_inputs["length"]):
-        print("WARNING: Possible truncation occurring in input_ids.")
+        print("WARNING: Possible truncation occurring in answer_input_ids.")
 
     return {
         "idx": indices,
         "answer": answers,
-        "context_input_ids": context_inputs["input_ids"],
-        "context_attention_mask": context_inputs["attention_mask"],
+        "input_ids": context_inputs["input_ids"],
+        "attention_mask": context_inputs["attention_mask"],
         "answer_input_ids": answer_inputs["input_ids"],
         "answer_attention_mask": answer_inputs["attention_mask"],
     }
@@ -125,7 +125,12 @@ class RetrievalMetrics:
 
 class RetrievalTrainer(Trainer):
     def __init__(
-        self, heuristic="bleu", loss_student_scale=1.0, n_candidates=10, **kwargs
+        self,
+        heuristic="bleu",
+        loss_student_scale=1.0,
+        n_candidates=10,
+        index_key="answer",
+        **kwargs,
     ):
         super().__init__(**kwargs)
 
@@ -146,11 +151,12 @@ class RetrievalTrainer(Trainer):
 
         self.loss_student_scale = loss_student_scale
         self.n_candidates = n_candidates
+        self.index_key = index_key
 
     def compute_loss(self, model, inputs, return_outputs=False):
         context_embeddings = model(
-            input_ids=inputs["context_input_ids"],
-            attention_mask=inputs["context_attention_mask"],
+            input_ids=inputs["input_ids"],
+            attention_mask=inputs["attention_mask"],
         )
         answer_embeddings = model(
             input_ids=inputs["answer_input_ids"],
@@ -162,11 +168,12 @@ class RetrievalTrainer(Trainer):
         )
         scores_m = dot_score(context_embeddings, answer_embeddings)
 
-        # TODO: HERE
-        loss = compare_rank_scores(scores_h, scores_m)
+        loss = compare_scores_diff(scores_h, scores_m)
         loss = torch.mean(loss)
 
-        return (loss, outputs) if return_outputs else loss
+        return (
+            (loss, (context_embeddings, answer_embeddings)) if return_outputs else loss
+        )
 
     def evaluate(
         self,
@@ -177,7 +184,7 @@ class RetrievalTrainer(Trainer):
         # Generate index
         train_dataloader = self.get_train_dataloader()
         self.index, self.compute_metrics.index_ids_labels = generate_index(
-            train_dataloader, self.model
+            train_dataloader, self.model, self.index_key
         )
 
         return super().evaluate(eval_dataset, ignore_keys, metric_key_prefix)
@@ -189,13 +196,16 @@ class RetrievalTrainer(Trainer):
         inputs = self._prepare_inputs(inputs)
 
         with torch.no_grad():
-            loss, outputs = self.compute_loss(model, inputs, return_outputs=True)
+            loss, (context_embeddings, _) = self.compute_loss(
+                model, inputs, return_outputs=True
+            )
             indices, _ = retrieve(
                 model,
                 None,
                 self.index,
                 self.n_candidates,
-                outputs=outputs,
+                outputs=context_embeddings,
+                index_key=self.index_key,
             )
         candidates = torch.tensor(indices, dtype=torch.long)
 
@@ -229,7 +239,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--index",
         type=str,
-        choices=["context", "answer", "conversation"],
+        choices=["context", "answer"],
         default="answer",
     )
     parser.add_argument(
@@ -263,8 +273,8 @@ if __name__ == "__main__":
         type="torch",
         columns=[
             "idx",
-            "context_input_ids",
-            "context_attention_mask",
+            "input_ids",
+            "attention_mask",
             "answer_input_ids",
             "answer_attention_mask",
         ],
@@ -272,9 +282,7 @@ if __name__ == "__main__":
     )
 
     # Setup data collator
-    data_collator = DataCollatorWithPaddingAndText(
-        tokenizer=tokenizer, padding="longest"
-    )
+    data_collator = RetrievalDataCollator(tokenizer=tokenizer, padding=True)
 
     # Setup training arguments
     training_args = TrainingArguments(
@@ -310,6 +318,7 @@ if __name__ == "__main__":
         heuristic=args.heuristic,
         loss_student_scale=args.loss_student_scale,
         n_candidates=args.n_candidates,
+        index_key=args.index,
     )
 
     # Train
