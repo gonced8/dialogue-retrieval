@@ -59,11 +59,18 @@ def build_samples(samples, indices, args, tokenizer):
 
 
 class RetrievalMetrics:
-    def __init__(self, train_dataset):
-        with open(train_dataset, "r") as f:
-            data = json.load(f)["data"]
-        self.dataset = {sample["id"]: sample["text"][-1] for sample in data}
-        self.index_ids_labels = None
+    def __init__(self, index_dataset, query_dataset, output):
+        # Load datasets
+        with open(index_dataset, "r") as f:
+            index_data = json.load(f)["data"]
+        self.index_dataset = [sample["text"][-1] for sample in index_data]
+
+        with open(query_dataset, "r") as f:
+            query_data = json.load(f)["data"]
+        self.query_dataset = [sample["text"][-1] for sample in query_data]
+
+        # Name of file where output metrics and retrieval results will be saved
+        self.output = self.output
 
         # Load metrics
         self.bleu = BLEU(effective_order=True)
@@ -72,12 +79,12 @@ class RetrievalMetrics:
     def __call__(self, eval_pred):
         candidates_ids = eval_pred.predictions
         candidates = [
-            [self.dataset[self.index_ids_labels[i]] for i in sample_candidates]
+            [self.index_dataset[idx] for idx in sample_candidates]
             for sample_candidates in candidates_ids
         ]
 
         answers_ids = eval_pred.label_ids
-        answers = [next(islice(self.dataset.values(), i, i + 1)) for i in answers_ids]
+        answers = [self.query_dataset[idx] for idx in answers_ids]
 
         # Compute BLEUo scores
         bleu_scores = np.array(
@@ -116,12 +123,18 @@ class RetrievalMetrics:
         mrr_bleu = np.reciprocal(best_bleu + 1.0).mean()
         mrr_rouge = np.reciprocal(best_rouge + 1.0).mean()
 
-        return {
+        metrics = {
             "bleu": bleu_score,
             "rouge": rouge_score,
             "mrr_bleu": mrr_bleu,
             "mrr_rouge": mrr_rouge,
         }
+
+        # Retrieval results
+
+        # Save to file
+
+        return metrics
 
 
 class RetrievalTrainer(Trainer):
@@ -153,6 +166,7 @@ class RetrievalTrainer(Trainer):
         self.loss_student_scale = loss_student_scale
         self.n_candidates = n_candidates
         self.index_key = index_key
+        self.index_idx = None
 
     def compute_loss(self, model, inputs, return_outputs=False):
         context_embeddings = model(
@@ -169,7 +183,7 @@ class RetrievalTrainer(Trainer):
 
         # Compute loss that uses heuristic as teacher
         # scores_h = heuristic_score(
-        #     self.heuristic_fn, inputs["answer"], context_embeddings.device
+        #    self.heuristic_fn, inputs["answer"], context_embeddings.device
         # )
         # scores_m = dot_score(context_embeddings, answer_embeddings)
 
@@ -193,9 +207,8 @@ class RetrievalTrainer(Trainer):
         metric_key_prefix="eval",
     ):
         # Generate index
-        train_dataloader = self.get_train_dataloader()
-        self.index, self.compute_metrics.index_ids_labels = generate_index(
-            train_dataloader, self.model, self.index_key
+        self.index, self.index_idx = generate_index(
+            self.get_train_dataloader(), self.model, self.index_key
         )
 
         return super().evaluate(eval_dataset, ignore_keys, metric_key_prefix)
@@ -216,8 +229,13 @@ class RetrievalTrainer(Trainer):
                 self.index,
                 self.n_candidates,
                 outputs=context_embeddings,
-                index_key=self.index_key,
             )
+
+        # Convert candidates to correct ids
+        indices = [
+            [self.index_idx[i] for i in sample_candidates]
+            for sample_candidates in indices
+        ]
         candidates = torch.tensor(indices, dtype=torch.long)
 
         return loss, candidates, queries
@@ -229,7 +247,6 @@ if __name__ == "__main__":
     parser.add_argument("--experiment_name", type=str, required=True)
     parser.add_argument("--train_dataset", type=str, required=True)
     parser.add_argument("--val_dataset", type=str, required=True)
-    parser.add_argument("--test_dataset", type=str)
     parser.add_argument(
         "--model", type=str, default="sentence-transformers/multi-qa-mpnet-base-dot-v1"
     )
@@ -243,7 +260,7 @@ if __name__ == "__main__":
     parser.add_argument("--logging_steps", type=int, default=20)
     parser.add_argument("--eval_steps", type=int, default=2000)
     parser.add_argument("--save_steps", type=int, default=2000)
-    parser.add_argument("--metric_for_best_model", type=str, default="rouge")
+    parser.add_argument("--metric_for_best_model", type=str, default="bleu")
     parser.add_argument(
         "--resume_from_checkpoint", default=False, action=BooleanOptionalAction
     )
@@ -256,7 +273,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--heuristic", type=str, choices=["bleu", "rouge"], default="rouge"
     )
-    parser.add_argument("--loss_student_scale", type=float, default=1.0)
     parser.add_argument("--n_candidates", type=int, default=10)
     parser.add_argument("--logging", default=True, action=BooleanOptionalAction)
     parser.add_argument("--lr_scheduler_type", type=str, default="linear")
@@ -270,7 +286,6 @@ if __name__ == "__main__":
     data_files = {
         "train": args.train_dataset,
         "validation": args.val_dataset,
-        "test": args.test_dataset,
     }
     dataset = load_dataset("json", data_files=data_files, field="data")
 
@@ -324,14 +339,13 @@ if __name__ == "__main__":
         data_collator=data_collator,
         train_dataset=dataset["train"],
         eval_dataset=dataset["validation"],
-        compute_metrics=RetrievalMetrics(args.train_dataset),
+        compute_metrics=RetrievalMetrics(args.train_dataset, args.val_dataset),
         callbacks=[
             EarlyStoppingCallback(
                 early_stopping_patience=10, early_stopping_threshold=1e-4
             )
         ],
         heuristic=args.heuristic,
-        loss_student_scale=args.loss_student_scale,
         n_candidates=args.n_candidates,
         index_key=args.index,
     )

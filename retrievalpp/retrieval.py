@@ -11,7 +11,7 @@ def generate_index(index_dataloader, encoder, index_key="answer"):
 
     # Compute embeddings
     all_embeddings = []
-    ids_labels = []
+    idx = []
 
     for batch in tqdm(index_dataloader, desc="Calculating embeddings"):
         # Get input_ids and attention_mask into device
@@ -26,7 +26,7 @@ def generate_index(index_dataloader, encoder, index_key="answer"):
         all_embeddings.append(embeddings.cpu().numpy())
 
         # Update ids_labels array
-        ids_labels.extend(batch["id"])
+        idx.extend(batch["idx"])
 
     all_embeddings = np.concatenate(all_embeddings)
 
@@ -42,12 +42,12 @@ def generate_index(index_dataloader, encoder, index_key="answer"):
         save_on_disk=False,
     )
 
-    return index, ids_labels
+    return index, idx
 
 
 def retrieve(encoder, inputs, index, n_candidates, outputs=None, index_key="answer"):
     """May contain leakage of data if using same dataset for query and documents"""
-    index_key = "" if index_key == "context" else "_"
+    index_key = "" if index_key == "context" else f"{index_key}_"
 
     # Encode
     if outputs is None:
