@@ -7,6 +7,7 @@ import numpy as np
 from rouge_score.rouge_scorer import RougeScorer
 from sacrebleu.metrics import BLEU
 from sentence_transformers.util import dot_score
+import torch
 from tqdm.contrib import tzip
 from transformers import (
     AutoTokenizer,
@@ -158,18 +159,28 @@ class RetrievalTrainer(Trainer):
             input_ids=inputs["input_ids"],
             attention_mask=inputs["attention_mask"],
         )
-        answer_embeddings = model(
-            input_ids=inputs["answer_input_ids"],
-            attention_mask=inputs["answer_attention_mask"],
-        )
+        if self.index_key == "answer":
+            answer_embeddings = model(
+                input_ids=inputs["answer_input_ids"],
+                attention_mask=inputs["answer_attention_mask"],
+            )
+        else:
+            answer_embeddings = context_embeddings
 
-        scores_h = heuristic_score(
-            self.heuristic_fn, inputs["answer"], context_embeddings.device
-        )
-        scores_m = dot_score(context_embeddings, answer_embeddings)
+        # Compute loss that uses heuristic as teacher
+        # scores_h = heuristic_score(
+        #     self.heuristic_fn, inputs["answer"], context_embeddings.device
+        # )
+        # scores_m = dot_score(context_embeddings, answer_embeddings)
 
-        loss = compare_scores_diff(scores_h, scores_m)
-        loss = torch.mean(loss)
+        # loss = compare_scores_diff(scores_h, scores_m)
+        # loss = torch.mean(loss)
+
+        # Compute loss
+        scores = dot_score(context_embeddings, answer_embeddings)
+        loss = torch.nn.functional.cross_entropy(
+            scores, torch.arange(0, scores.size(0), device=scores.device)
+        )
 
         return (
             (loss, (context_embeddings, answer_embeddings)) if return_outputs else loss
@@ -226,9 +237,9 @@ if __name__ == "__main__":
     parser.add_argument("--max_length", type=int, default=512)
     parser.add_argument("--num_train_epochs", type=int, default=20)
     parser.add_argument("--learning_rate", type=float, default=5e-5)
-    parser.add_argument("--train_batch_size", type=int, default=64)
+    parser.add_argument("--train_batch_size", type=int, default=32)
     parser.add_argument("--val_batch_size", type=int, default=64)
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=2)
     parser.add_argument("--logging_steps", type=int, default=20)
     parser.add_argument("--eval_steps", type=int, default=2000)
     parser.add_argument("--save_steps", type=int, default=2000)
@@ -247,6 +258,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("--loss_student_scale", type=float, default=1.0)
     parser.add_argument("--n_candidates", type=int, default=10)
+    parser.add_argument("--logging", default=True, action=BooleanOptionalAction)
+    parser.add_argument("--lr_scheduler_type", type=str, default="linear")
     args = parser.parse_args()
 
     # Initialize model and tokenizer
@@ -300,6 +313,8 @@ if __name__ == "__main__":
         load_best_model_at_end=True,
         remove_unused_columns=False,
         learning_rate=args.learning_rate,
+        lr_scheduler_type=args.lr_scheduler_type,
+        logging_strategy="steps" if args.logging else "no",
     )
 
     # Create Trainer
