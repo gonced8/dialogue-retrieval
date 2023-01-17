@@ -1,3 +1,4 @@
+import torch
 from transformers import (
     AutoConfig,
     AutoModel,
@@ -7,8 +8,8 @@ from transformers import (
 
 class Encoder(PreTrainedModel):
     def __init__(self, model_name):
-        super(Encoder, self).__init__(config=AutoConfig.from_pretrained(model_name))
-        self.model = AutoModel.from_pretrained(model_name)
+        super().__init__(AutoConfig.from_pretrained(model_name))
+        self.model = AutoModel.from_config(self.config)
 
     def forward(self, **inputs):
         model_output = self.model(**inputs)

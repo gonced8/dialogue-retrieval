@@ -6,6 +6,42 @@ from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.utils import PaddingStrategy
 
 
+def build_samples(samples, indices, args, tokenizer):
+    # Select data
+    contexts = [" ".join(turns[:-1]) for turns in samples["text"]]
+    answers = [turns[-1] for turns in samples["text"]]
+
+    # Tokenize
+    context_inputs = tokenizer(
+        contexts,
+        max_length=args.max_length,
+        truncation=True,
+        return_length=True,
+    )
+    answer_inputs = tokenizer(
+        answers,
+        max_length=args.max_length,
+        truncation=True,
+        return_length=True,
+    )
+
+    # Verify if possible truncation
+    if any(sample_len == args.max_length for sample_len in context_inputs["length"]):
+        print("WARNING: Possible truncation occurring in input_ids.")
+
+    if any(sample_len == args.max_length for sample_len in answer_inputs["length"]):
+        print("WARNING: Possible truncation occurring in answer_input_ids.")
+
+    return {
+        "idx": indices,
+        "answer": answers,
+        "input_ids": context_inputs["input_ids"],
+        "attention_mask": context_inputs["attention_mask"],
+        "answer_input_ids": answer_inputs["input_ids"],
+        "answer_attention_mask": answer_inputs["attention_mask"],
+    }
+
+
 @dataclass
 class RetrievalDataCollator:
     tokenizer: PreTrainedTokenizerBase
