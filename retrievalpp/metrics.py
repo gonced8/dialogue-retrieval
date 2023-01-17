@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import numpy as np
 from rouge_score.rouge_scorer import RougeScorer
@@ -88,10 +89,12 @@ class RetrievalMetrics:
 
             # Save to file
             with open(self.output, "w") as f:
+                version = Path(self.output).stem
                 json.dump(
-                    {"version": self.output, "metrics": metrics, "data": results},
+                    {"version": version, "metrics": metrics, "data": results},
                     f,
                     indent=4,
                 )
+            print(f"Saved results to: {self.output}")
 
         return metrics

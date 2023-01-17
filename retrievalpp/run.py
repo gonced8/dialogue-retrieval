@@ -39,7 +39,7 @@ if __name__ == "__main__":
     parser.add_argument("--logging_steps", type=int, default=20)
     parser.add_argument("--eval_steps", type=int, default=2000)
     parser.add_argument("--save_steps", type=int, default=2000)
-    parser.add_argument("--metric_for_best_model", type=str, default="rouge")
+    parser.add_argument("--metric_for_best_model", type=str, default="loss")
     parser.add_argument(
         "--resume_from_checkpoint", default=False, action=BooleanOptionalAction
     )
@@ -55,15 +55,11 @@ if __name__ == "__main__":
 
     # Initialize model and tokenizer
     tokenizer = AutoTokenizer.from_pretrained(args.model)
-    config = RetrievalConfig(args.model, args.dual)
     model = (
-        RetrievalModel(config)
+        RetrievalModel(RetrievalConfig(args.model, args.dual))
         if not args.checkpoint
         else RetrievalModel.from_pretrained(args.checkpoint)
     )
-
-    # print(next(model.encoder_answer.parameters()))
-    # input()
 
     # Load dataset
     data_files = {}

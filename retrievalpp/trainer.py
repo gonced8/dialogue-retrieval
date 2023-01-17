@@ -76,7 +76,7 @@ class RetrievalTrainer(Trainer):
 
         return super().evaluate(eval_dataset, ignore_keys, metric_key_prefix)
 
-    def predict(self, test_dataset, ignore_keys=None, metric_key_prefix="test"):
+    def predict(self, test_dataset, ignore_keys=["answer"], metric_key_prefix="test"):
         # Generate index
         self.index = generate_index(
             self.get_train_dataloader(), self.model.encoder_answer, index_key="answer"
@@ -91,18 +91,23 @@ class RetrievalTrainer(Trainer):
         inputs = self._prepare_inputs(inputs)
 
         with torch.no_grad():
-            # loss, (context_embeddings, _) = self.compute_loss(
-            #    model, inputs, return_outputs=True
-            # )
+            if ignore_keys is None:
+                loss, (context_embeddings, _) = self.compute_loss(
+                    model, inputs, return_outputs=True
+                )
+            else:
+                loss = None
+                context_embeddings = None
+
             indices, _ = retrieve(
                 model.encoder_question,
                 inputs,
                 self.index,
                 self.n_candidates,
-                # outputs=context_embeddings,
+                outputs=context_embeddings,
                 index_key="context",
             )
 
             candidates = torch.tensor(indices, dtype=torch.long)
 
-        return None, candidates, queries
+        return loss, candidates, queries
