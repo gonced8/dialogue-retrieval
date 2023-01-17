@@ -91,6 +91,7 @@ class RetrievalTrainer(Trainer):
         inputs = self._prepare_inputs(inputs)
 
         with torch.no_grad():
+            # Hack to get loss only for validation, not for test
             if ignore_keys is None:
                 loss, (context_embeddings, _) = self.compute_loss(
                     model, inputs, return_outputs=True
