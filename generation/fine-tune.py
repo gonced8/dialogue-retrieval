@@ -101,6 +101,7 @@ if __name__ == "__main__":
     parser.add_argument("--max_output_length", type=int, default=256)
     parser.add_argument("--candidates", type=int, default=10)
     parser.add_argument("--num_train_epochs", type=int, default=20)
+    parser.add_argument("--learning_rate", type=float, default=5e-5)
     parser.add_argument("--train_batch_size", type=int, default=8)
     parser.add_argument("--val_batch_size", type=int, default=8)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=8)
@@ -149,6 +150,7 @@ if __name__ == "__main__":
         per_device_train_batch_size=args.train_batch_size,
         per_device_eval_batch_size=args.val_batch_size,
         num_train_epochs=args.num_train_epochs,
+        learning_rate=args.learning_rate,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         predict_with_generate=True,
         generation_max_length=args.max_output_length,
