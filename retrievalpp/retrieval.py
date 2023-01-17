@@ -38,15 +38,15 @@ def generate_index(index_dataloader, encoder, index_key="answer"):
         max_index_memory_usage="32G",
         current_memory_available=current_memory_available,
         metric_type="ip",
-        # metric_type="l2",
         save_on_disk=False,
     )
 
-    return index, idx
+    return (index, idx)
 
 
-def retrieve(encoder, inputs, index, n_candidates, outputs=None, index_key="answer"):
+def retrieve(encoder, inputs, index, n_candidates, outputs=None, index_key="context"):
     """May contain leakage of data if using same dataset for query and documents"""
+    index, idx = index
     index_key = "" if index_key == "context" else f"{index_key}_"
 
     # Encode
@@ -63,5 +63,8 @@ def retrieve(encoder, inputs, index, n_candidates, outputs=None, index_key="answ
         embeddings.cpu().detach().numpy(),
         n_candidates,
     )
+
+    # Convert candidates to correct indices
+    indices = [[idx[i] for i in sample_candidates] for sample_candidates in indices]
 
     return indices, distances

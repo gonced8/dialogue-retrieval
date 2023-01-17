@@ -1,15 +1,26 @@
 import torch
-from transformers import (
-    AutoConfig,
-    AutoModel,
-    PreTrainedModel,
-)
+from transformers import AutoConfig, AutoModel, PreTrainedModel, PretrainedConfig
 
 
-class Encoder(PreTrainedModel):
-    def __init__(self, model_name):
-        super().__init__(AutoConfig.from_pretrained(model_name))
-        self.model = AutoModel.from_config(self.config)
+class EncoderConfig(PretrainedConfig):
+    model_type = "encodermodel"
+
+    def __init__(
+        self, base_model="sentence-transformers/multi-qa-mpnet-base-dot-v1", **kwargs
+    ) -> None:
+        super().__init__(**kwargs)
+        self.base_model = base_model
+
+
+class EncoderModel(PreTrainedModel):
+    config_class = EncoderConfig
+
+    def __init__(self, config):
+        super().__init__(config)
+        self.config = config
+
+        # Initialize model
+        self.model = AutoModel.from_pretrained(config.base_model)
 
     def forward(self, **inputs):
         model_output = self.model(**inputs)
@@ -29,4 +40,41 @@ class Encoder(PreTrainedModel):
         )
         return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(
             input_mask_expanded.sum(1), min=1e-9
+        )
+
+
+class RetrievalConfig(PretrainedConfig):
+    model_type = "retrievalmodel"
+
+    def __init__(
+        self,
+        base_model="sentence-transformers/multi-qa-mpnet-base-dot-v1",
+        dual=False,
+        **kwargs
+    ) -> None:
+        super().__init__(**kwargs)
+        self.base_model = base_model
+        self.dual = dual
+
+
+class RetrievalModel(PreTrainedModel):
+    config_class = RetrievalConfig
+
+    def __init__(self, config):
+        super().__init__(config)
+        self.config = config
+
+        # Initialize models
+        config_question = EncoderConfig(config.base_model)
+        config_answer = EncoderConfig(config.base_model)
+        self.encoder_question = EncoderModel(config_question)
+        self.encoder_answer = (
+            EncoderModel(config_answer) if self.config.dual else self.encoder_question
+        )
+
+    def forward(self, mode="question", **inputs):
+        return (
+            self.encoder_question(**inputs)
+            if mode == "question"
+            else self.encoder_answer(**inputs)
         )

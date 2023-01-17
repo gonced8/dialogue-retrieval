@@ -12,7 +12,7 @@ from transformers import (
 from data import build_samples, RetrievalDataCollator
 from losses import *
 from metrics import RetrievalMetrics
-from model import Encoder
+from model import RetrievalConfig, RetrievalModel
 from trainer import RetrievalTrainer
 
 if __name__ == "__main__":
@@ -43,24 +43,27 @@ if __name__ == "__main__":
     parser.add_argument(
         "--resume_from_checkpoint", default=False, action=BooleanOptionalAction
     )
-    parser.add_argument(
-        "--index",
-        type=str,
-        choices=["context", "answer"],
-        default="answer",
-    )
-    parser.add_argument(
-        "--heuristic", type=str, choices=["bleu", "rouge"], default="rouge"
-    )
+    # parser.add_argument(
+    #    "--heuristic", type=str, choices=["bleu", "rouge"], default="rouge"
+    # )
     parser.add_argument("--n_candidates", type=int, default=10)
     parser.add_argument("--logging", default=True, action=BooleanOptionalAction)
     parser.add_argument("--lr_scheduler_type", type=str, default="linear")
     parser.add_argument("--output", type=str, default=None)
+    parser.add_argument("--dual", default=False, action=BooleanOptionalAction)
     args = parser.parse_args()
 
     # Initialize model and tokenizer
     tokenizer = AutoTokenizer.from_pretrained(args.model)
-    model = Encoder(args.checkpoint if args.checkpoint else args.model)
+    config = RetrievalConfig(args.model, args.dual)
+    model = (
+        RetrievalModel(config)
+        if not args.checkpoint
+        else RetrievalModel.from_pretrained(args.checkpoint)
+    )
+
+    # print(next(model.encoder_answer.parameters()))
+    # input()
 
     # Load dataset
     data_files = {}
@@ -132,9 +135,8 @@ if __name__ == "__main__":
                 early_stopping_patience=10, early_stopping_threshold=1e-4
             )
         ],
-        heuristic=args.heuristic,
+        # heuristic=args.heuristic,
         n_candidates=args.n_candidates,
-        index_key=args.index,
     )
 
     # Run

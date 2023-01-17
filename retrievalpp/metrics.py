@@ -23,16 +23,14 @@ class RetrievalMetrics:
         self.rouge = RougeScorer(["rougeL"])
 
     def __call__(self, eval_pred):
-        candidates_ids = eval_pred.predictions
+        candidates_ids, queries_ids = eval_pred
         candidates = [
             [self.index_dataset[idx]["text"][-1] for idx in sample_candidates]
             for sample_candidates in candidates_ids
         ]
+        answers = [self.query_dataset[idx]["text"][-1] for idx in queries_ids]
 
-        answers_ids = eval_pred.label_ids
-        answers = [self.query_dataset[idx]["text"][-1] for idx in answers_ids]
-
-        # Compute BLEUo scores
+        # Compute BLEU scores
         bleu_scores = np.array(
             [
                 [
@@ -60,7 +58,7 @@ class RetrievalMetrics:
 
         # Get scores from best candidate and average
         best_bleu = np.argmax(bleu_scores, axis=1)
-        best_rouge = np.argmax(bleu_scores, axis=1)
+        best_rouge = np.argmax(rouge_scores, axis=1)
 
         bleu_score = bleu_scores[best_bleu].mean()
         rouge_score = rouge_scores[best_rouge].mean()
@@ -85,11 +83,15 @@ class RetrievalMetrics:
                     "knowledge": sample_candidates,
                     "response": self.query_dataset[query_id]["text"][-1],
                 }
-                for query_id, sample_candidates in zip(answers_ids, candidates)
+                for query_id, sample_candidates in zip(queries_ids, candidates)
             ]
 
             # Save to file
             with open(self.output, "w") as f:
-                json.dump({"version": self.output, "metrics": metrics, "data": results})
+                json.dump(
+                    {"version": self.output, "metrics": metrics, "data": results},
+                    f,
+                    indent=4,
+                )
 
         return metrics
