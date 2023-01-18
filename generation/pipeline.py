@@ -1,4 +1,4 @@
-from argparse import ArgumentParser, BooleanOptionalAction
+from argparse import ArgumentParser
 
 from datasets import load_dataset
 from transformers import (

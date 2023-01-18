@@ -1,6 +1,4 @@
 from argparse import ArgumentParser, BooleanOptionalAction
-from itertools import islice
-import json
 
 from datasets import load_dataset
 from transformers import (
@@ -51,6 +49,7 @@ if __name__ == "__main__":
     parser.add_argument("--lr_scheduler_type", type=str, default="linear")
     parser.add_argument("--output", type=str, default=None)
     parser.add_argument("--dual", default=False, action=BooleanOptionalAction)
+    parser.add_argument("--retrieval_exclude_indices", type=str, default=None)
     args = parser.parse_args()
 
     # Initialize model and tokenizer
@@ -133,6 +132,7 @@ if __name__ == "__main__":
         ],
         # heuristic=args.heuristic,
         n_candidates=args.n_candidates,
+        retrieval_exclude_indices=args.retrieval_exclude_indices,
     )
 
     # Run

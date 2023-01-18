@@ -17,7 +17,8 @@ def build_samples(samples):
     for context, knowledge in zip(samples["context"], samples["knowledge"]):
         input_text = " EOS ".join(context)
         if knowledge and args.candidates > 0:
-            knowledge = " | ".join(knowledge[: args.candidates])
+            unique_knowledge = [*set(knowledge)]  # Remove duplicate candidates
+            knowledge = " | ".join(unique_knowledge[: args.candidates])
             input_text += " <|Knowledge|> " + knowledge
         input_text += " => "
 
@@ -37,7 +38,7 @@ def build_samples(samples):
         print("WARNING: Possible truncation occurring in input_ids.")
 
     decoder_input_ids = tokenizer(
-        tokenizer.pad_token + "SYSTEM: ",
+        "<pad>SYSTEM: ",
         max_length=args.max_output_length,
         truncation=True,
         return_attention_mask=False,
@@ -73,7 +74,7 @@ if __name__ == "__main__":
     parser.add_argument("--preprocess_batch_size", type=int, default=256)
     parser.add_argument("--max_input_length", type=int, default=512)
     parser.add_argument("--max_output_length", type=int, default=256)
-    parser.add_argument("--candidates", type=int, default=10)
+    parser.add_argument("--candidates", type=int, default=5)
     parser.add_argument("--test_batch_size", type=int, default=32)
     parser.add_argument(
         "--predict_with_generate", default=True, action=BooleanOptionalAction

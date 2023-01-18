@@ -7,7 +7,7 @@ import os
 import datasets
 
 
-def build_samples(sample):
+def build_samples(sample, index):
     context = [
         speaker + utterance
         for speaker, utterance in zip(
@@ -17,7 +17,12 @@ def build_samples(sample):
     knowledge = sample["personality"]
     response = "SYSTEM: " + sample["candidates"][-1]
 
-    return {"context": context, "knowledge": knowledge, "response": response}
+    return {
+        "id": str(index),
+        "context": context,
+        "knowledge": knowledge,
+        "response": response,
+    }
 
 
 if __name__ == "__main__":
@@ -48,7 +53,11 @@ if __name__ == "__main__":
 
     # Build samples
     print("Building samples...")
-    dataset = dataset.map(build_samples, remove_columns=dataset["train"].column_names)
+    dataset = dataset.map(
+        build_samples,
+        remove_columns=dataset["train"].column_names,
+        with_indices=True,
+    )
 
     # Save data
     print("Saving samples...")

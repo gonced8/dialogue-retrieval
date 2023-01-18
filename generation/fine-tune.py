@@ -18,7 +18,8 @@ def build_samples(samples):
     for context, knowledge in zip(samples["context"], samples["knowledge"]):
         input_text = " EOS ".join(context)
         if knowledge and args.candidates > 0:
-            knowledge = " | ".join(knowledge[: args.candidates])
+            unique_knowledge = [*set(knowledge)]  # Remove duplicate candidates
+            knowledge = " | ".join(unique_knowledge[: args.candidates])
             input_text += " <|Knowledge|> " + knowledge
         input_text += " => "
 
@@ -99,7 +100,7 @@ if __name__ == "__main__":
     parser.add_argument("--preprocess_batch_size", type=int, default=256)
     parser.add_argument("--max_input_length", type=int, default=512)
     parser.add_argument("--max_output_length", type=int, default=256)
-    parser.add_argument("--candidates", type=int, default=10)
+    parser.add_argument("--candidates", type=int, default=5)
     parser.add_argument("--num_train_epochs", type=int, default=20)
     parser.add_argument("--learning_rate", type=float, default=5e-5)
     parser.add_argument("--train_batch_size", type=int, default=8)

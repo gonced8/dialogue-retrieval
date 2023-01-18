@@ -1,5 +1,7 @@
-from rouge_score.rouge_scorer import RougeScorer
-from sacrebleu.metrics import BLEU
+import json
+
+# from rouge_score.rouge_scorer import RougeScorer
+# from sacrebleu.metrics import BLEU
 from sentence_transformers.util import dot_score
 import torch
 from transformers import Trainer
@@ -12,6 +14,7 @@ class RetrievalTrainer(Trainer):
         self,
         # heuristic="bleu",
         n_candidates=10,
+        retrieval_exclude_indices=None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -32,6 +35,13 @@ class RetrievalTrainer(Trainer):
         #     )["rougeL"].fmeasure
 
         self.n_candidates = n_candidates
+
+        if retrieval_exclude_indices:
+            with open(retrieval_exclude_indices, "r") as f:
+                self.exclude_indices = json.load(f)
+        else:
+            self.exclude_indices = None
+
         self.index_idx = None
 
     def compute_loss(self, model, inputs, return_outputs=False):
@@ -107,6 +117,8 @@ class RetrievalTrainer(Trainer):
                 self.n_candidates,
                 outputs=context_embeddings,
                 index_key="context",
+                queries=inputs["id"],
+                exclude_indices=self.exclude_indices,
             )
 
             candidates = torch.tensor(indices, dtype=torch.long)
