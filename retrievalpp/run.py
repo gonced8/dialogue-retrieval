@@ -41,15 +41,21 @@ if __name__ == "__main__":
     parser.add_argument(
         "--resume_from_checkpoint", default=False, action=BooleanOptionalAction
     )
-    # parser.add_argument(
-    #    "--heuristic", type=str, choices=["bleu", "rouge"], default="rouge"
-    # )
+    parser.add_argument(
+        "--heuristic", type=str, choices=["bleu", "rouge"], default="rouge"
+    )
     parser.add_argument("--n_candidates", type=int, default=10)
     parser.add_argument("--logging", default=True, action=BooleanOptionalAction)
     parser.add_argument("--lr_scheduler_type", type=str, default="linear")
     parser.add_argument("--output", type=str, default=None)
     parser.add_argument("--dual", default=False, action=BooleanOptionalAction)
     parser.add_argument("--retrieval_exclude_indices", type=str, default=None)
+    parser.add_argument(
+        "--loss_fn",
+        type=str,
+        choices=["cross_entropy", "heuristic"],
+        default="cross_entropy",
+    )
     args = parser.parse_args()
 
     # Initialize model and tokenizer
@@ -90,6 +96,10 @@ if __name__ == "__main__":
         output_all_columns=True,
     )
 
+    # Shuffle validation dataset (it will be better to compute a loss)
+    if args.val_dataset:
+        dataset["validation"] = dataset["validation"].shuffle(seed=42)
+
     # Setup data collator
     data_collator = RetrievalDataCollator(tokenizer=tokenizer, padding=True)
 
@@ -105,7 +115,7 @@ if __name__ == "__main__":
         logging_steps=args.logging_steps,
         save_steps=args.save_steps,
         save_total_limit=1,
-        metric_for_best_model=f"eval_{args.metric_for_best_model}",
+        metric_for_best_model=args.metric_for_best_model,
         load_best_model_at_end=True,
         remove_unused_columns=False,
         learning_rate=args.learning_rate,
@@ -125,14 +135,15 @@ if __name__ == "__main__":
             query_dataset=args.val_dataset if args.val_dataset else args.test_dataset,
             output=args.output,
         ),
-        callbacks=[
-            EarlyStoppingCallback(
-                early_stopping_patience=10, early_stopping_threshold=1e-4
-            )
-        ],
-        # heuristic=args.heuristic,
+        # callbacks=[
+        #    EarlyStoppingCallback(
+        #        early_stopping_patience=10, early_stopping_threshold=1e-4
+        #    )
+        # ],
+        heuristic=args.heuristic,
         n_candidates=args.n_candidates,
         retrieval_exclude_indices=args.retrieval_exclude_indices,
+        loss_fn=args.loss_fn,
     )
 
     # Run

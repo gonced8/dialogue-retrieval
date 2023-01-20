@@ -79,6 +79,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--predict_with_generate", default=True, action=BooleanOptionalAction
     )
+    parser.add_argument("--do_sample", default=False, action=BooleanOptionalAction)
     args = parser.parse_args()
 
     # Load dataset
@@ -120,7 +121,9 @@ if __name__ == "__main__":
 
     # Test
     output = trainer.predict(
-        test_dataset=dataset["test"], max_length=args.max_output_length
+        test_dataset=dataset["test"],
+        max_length=args.max_output_length,
+        do_sample=args.do_sample,
     )
     predictions = tokenizer.batch_decode(
         output.predictions, skip_special_tokens=True, clean_up_tokenization_spaces=True

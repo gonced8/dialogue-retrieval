@@ -1,3 +1,4 @@
+from collections import defaultdict
 import psutil
 
 from autofaiss import build_index
@@ -12,6 +13,7 @@ def generate_index(index_dataloader, encoder, index_key="answer"):
     # Compute embeddings
     all_embeddings = []
     idx = []
+    ids = []
 
     for batch in tqdm(index_dataloader, desc="Calculating embeddings"):
         # Get input_ids and attention_mask into device
@@ -25,8 +27,9 @@ def generate_index(index_dataloader, encoder, index_key="answer"):
         # Add embeddings to cache
         all_embeddings.append(embeddings.cpu().numpy())
 
-        # Update ids_labels array
+        # Update ids arrays
         idx.extend(batch["idx"])
+        ids.extend(batch["id"])
 
     all_embeddings = np.concatenate(all_embeddings)
 
@@ -41,7 +44,12 @@ def generate_index(index_dataloader, encoder, index_key="answer"):
         save_on_disk=False,
     )
 
-    return (index, idx)
+    # Get excluded indices to avoid leakage
+    exclude_idx = defaultdict(list)
+    for i, doc_id in zip(idx, ids):
+        exclude_idx[doc_id.rsplit("_", 1)[0]].append(i)
+
+    return (index, idx, exclude_idx)
 
 
 def retrieve(
@@ -51,11 +59,10 @@ def retrieve(
     n_candidates,
     outputs=None,
     index_key="context",
-    queries=None,
-    exclude_indices=None,
+    queries_ids=None,
 ):
     """May contain leakage of data if using same dataset for query and documents"""
-    index, idx = index
+    index, idx, exclude_idx = index
     index_key = "" if index_key == "context" else f"{index_key}_"
 
     # Encode
@@ -68,11 +75,12 @@ def retrieve(
         embeddings = outputs
 
     # Get maximum of possible leaked candidates
-    if exclude_indices:
-        exclude_indices = [
-            exclude_indices[query.rsplit("_", 1)[0]] for query in queries
-        ]
-        max_leak = max(len(query_exclude) for query_exclude in exclude_indices)
+    if queries_ids:
+        queries_base_ids = [query_id.rsplit("\n", 1)[0] for query_id in queries_ids]
+        max_leak = max(
+            len(exclude_idx.get(query_base_id, []))
+            for query_base_id in queries_base_ids
+        )
     else:
         max_leak = 0
 
@@ -82,22 +90,27 @@ def retrieve(
         n_candidates + max_leak,
     )
 
-    # Convert candidates to correct indices
-    indices = [[idx[i] for i in sample_candidates] for sample_candidates in indices]
+    # Convert candidates to correct indices (index dataset might be shuffled)
+    indices = [[idx[i] for i in sample_hits] for sample_hits in indices]
 
     # Filter leaked candidates
-    if exclude_indices:
-        pair = [
+    if queries_ids:
+        hits_distances = [
             [
                 (hit, distance)
                 for hit, distance in zip(sample_candidates, sample_distances)
-                if hit not in query_exclude
+                if hit not in exclude_idx.get(query_base_id, [])
             ][:n_candidates]
-            for sample_candidates, sample_distances, query_exclude in zip(
-                indices, distances, exclude_indices
+            for sample_candidates, sample_distances, query_base_id in zip(
+                indices, distances, queries_base_ids
             )
         ]
-        indices = [[elem[0] for elem in sample_pairs] for sample_pairs in pair]
-        distances = [[elem[1] for elem in sample_pairs] for sample_pairs in pair]
+
+        indices = [
+            [elem[0] for elem in sample_pairs] for sample_pairs in hits_distances
+        ]
+        distances = [
+            [elem[1] for elem in sample_pairs] for sample_pairs in hits_distances
+        ]
 
     return indices, distances

@@ -116,6 +116,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--resume_from_checkpoint", default=False, action=BooleanOptionalAction
     )
+    parser.add_argument("--checkpoint", type=str)
     args = parser.parse_args()
 
     # Load dataset
@@ -134,7 +135,9 @@ if __name__ == "__main__":
     )
 
     # Load model
-    model = AutoModelForSeq2SeqLM.from_pretrained(args.model)
+    model = AutoModelForSeq2SeqLM.from_pretrained(
+        args.checkpoint if args.checkpoint else args.model
+    )
 
     # Setup data collator
     data_collator = DataCollatorForSeq2Seq(
@@ -178,7 +181,7 @@ if __name__ == "__main__":
         else preprocess_logits_for_metrics,
         callbacks=[
             EarlyStoppingCallback(
-                early_stopping_patience=5, early_stopping_threshold=1e-4
+                early_stopping_patience=10, early_stopping_threshold=1e-4
             )
         ],
     )

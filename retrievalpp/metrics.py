@@ -81,8 +81,8 @@ class RetrievalMetrics:
                 {
                     "id": self.query_dataset[query_id]["id"],
                     "context": self.query_dataset[query_id]["text"][:-1],
-                    "knowledge": sample_candidates,
                     "response": self.query_dataset[query_id]["text"][-1],
+                    "knowledge": sample_candidates,
                 }
                 for query_id, sample_candidates in zip(queries_ids, candidates)
             ]

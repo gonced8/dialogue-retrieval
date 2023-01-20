@@ -1,40 +1,43 @@
 import json
 
-# from rouge_score.rouge_scorer import RougeScorer
-# from sacrebleu.metrics import BLEU
+from rouge_score.rouge_scorer import RougeScorer
+from sacrebleu.metrics import BLEU
 from sentence_transformers.util import dot_score
 import torch
 from transformers import Trainer
 
+from losses import *
 from retrieval import generate_index, retrieve
 
 
 class RetrievalTrainer(Trainer):
     def __init__(
         self,
-        # heuristic="bleu",
+        heuristic="rouge",
         n_candidates=10,
         retrieval_exclude_indices=None,
+        loss_fn="cross_entropy",
         **kwargs,
     ):
         super().__init__(**kwargs)
 
         # Heuristic function
-        # if heuristic == "bleu":
-        #     self.heuristic = BLEU(effective_order=True)
-        #     self.heuristic_fn = (
-        #         lambda hypothesis, reference: self.heuristic.sentence_score(
-        #             hypothesis=hypothesis, references=[reference]
-        #         ).score
-        #         / 100
-        #     )
-        # elif heuristic == "rouge":
-        #     self.heuristic = RougeScorer(["rougeL"])
-        #     self.heuristic_fn = lambda hypothesis, reference: self.heuristic.score(
-        #         target=reference, prediction=hypothesis
-        #     )["rougeL"].fmeasure
+        if heuristic == "bleu":
+            self.heuristic = BLEU(effective_order=True)
+            self.heuristic_fn = (
+                lambda hypothesis, reference: self.heuristic.sentence_score(
+                    hypothesis=hypothesis, references=[reference]
+                ).score
+                / 100
+            )
+        elif heuristic == "rouge":
+            self.heuristic = RougeScorer(["rougeL"])
+            self.heuristic_fn = lambda hypothesis, reference: self.heuristic.score(
+                target=reference, prediction=hypothesis
+            )["rougeL"].fmeasure
 
         self.n_candidates = n_candidates
+        self.loss_fn = loss_fn
 
         if retrieval_exclude_indices:
             with open(retrieval_exclude_indices, "r") as f:
@@ -54,20 +57,21 @@ class RetrievalTrainer(Trainer):
             attention_mask=inputs["answer_attention_mask"],
         )
 
-        # Compute loss that uses heuristic as teacher
-        # scores_h = heuristic_score(
-        #   self.heuristic_fn, inputs["answer"], context_embeddings.device
-        # )
-        # scores_m = dot_score(context_embeddings, answer_embeddings)
-
-        # loss = compare_rank_scores_neighbors(scores_h, scores_m)
-        # loss = torch.mean(loss)
-
         # Compute loss
-        scores = dot_score(context_embeddings, answer_embeddings)
-        loss = torch.nn.functional.cross_entropy(
-            scores, torch.arange(0, scores.size(0), device=scores.device)
-        )
+        if self.loss_fn == "cross_entropy":
+            scores = dot_score(context_embeddings, answer_embeddings)
+            loss = torch.nn.functional.cross_entropy(
+                scores, torch.arange(0, scores.size(0), device=scores.device)
+            )
+
+        elif self.loss_fn == "heuristic":
+            scores_h = heuristic_score(
+                self.heuristic_fn, inputs["answer"], context_embeddings.device
+            )
+            scores_m = dot_score(context_embeddings, answer_embeddings)
+
+            loss = compare_scores_diff(scores_h, scores_m)
+            loss = torch.mean(loss)
 
         return (
             (loss, (context_embeddings, answer_embeddings)) if return_outputs else loss
@@ -117,8 +121,7 @@ class RetrievalTrainer(Trainer):
                 self.n_candidates,
                 outputs=context_embeddings,
                 index_key="context",
-                queries=inputs["id"],
-                exclude_indices=self.exclude_indices,
+                queries_ids=inputs["id"],
             )
 
             candidates = torch.tensor(indices, dtype=torch.long)

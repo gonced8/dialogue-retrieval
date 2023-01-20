@@ -87,9 +87,10 @@ st.header("Unbabel")
 
 args, tokenizer, generator = init()
 
-left, right = st.columns(2)
+left, middle, right = st.columns(3)
 compute = left.button("Compute")
-reset = right.button("Reset")
+reset = middle.button("Reset")
+refresh = right.button("Refresh")
 
 knowledge_cache = Knowledge()
 knowledge_textbox = st.empty()
@@ -135,6 +136,11 @@ if reset:
     print("reset")
     context_cache[0] = "USER: "
 
+if refresh:
+    print("refresh")
+    context_cache[0] = context_cache[0]
+    knowledge_cache[0] = knowledge_cache[0]
+
 if compute:
     print("compute")
     knowledge = knowledge_cache[0].split("\n")
@@ -155,6 +161,8 @@ if compute:
         "context": context[-5:],
         "knowledge": knowledge,
     }
+
+    print("data", data)
 
     # If there is anything
     if knowledge and context:
