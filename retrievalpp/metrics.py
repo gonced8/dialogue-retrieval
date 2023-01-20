@@ -25,11 +25,18 @@ class RetrievalMetrics:
 
     def __call__(self, eval_pred):
         candidates_ids, queries_ids = eval_pred
-        candidates = [
-            [self.index_dataset[idx]["text"][-1] for idx in sample_candidates]
-            for sample_candidates in candidates_ids
-        ]
-        answers = [self.query_dataset[idx]["text"][-1] for idx in queries_ids]
+        if "delexicalized" in self.index_dataset[0]:
+            candidates = [
+                [self.index_dataset[idx]["delexicalized"] for idx in sample_candidates]
+                for sample_candidates in candidates_ids
+            ]
+            answers = [self.query_dataset[idx]["delexicalized"] for idx in queries_ids]
+        else:
+            candidates = [
+                [self.index_dataset[idx]["text"][-1] for idx in sample_candidates]
+                for sample_candidates in candidates_ids
+            ]
+            answers = [self.query_dataset[idx]["text"][-1] for idx in queries_ids]
 
         # Compute BLEU scores
         bleu_scores = np.array(
@@ -77,15 +84,27 @@ class RetrievalMetrics:
 
         if self.output is not None:
             # Retrieval results
-            results = [
-                {
-                    "id": self.query_dataset[query_id]["id"],
-                    "context": self.query_dataset[query_id]["text"][:-1],
-                    "response": self.query_dataset[query_id]["text"][-1],
-                    "knowledge": sample_candidates,
-                }
-                for query_id, sample_candidates in zip(queries_ids, candidates)
-            ]
+            if "delexicalized" in self.index_dataset[0]:
+                results = [
+                    {
+                        "id": self.query_dataset[query_id]["id"],
+                        "context": self.query_dataset[query_id]["context"],
+                        "response": self.query_dataset[query_id]["response"],
+                        "delexicalized": self.query_dataset[query_id]["delexicalized"],
+                        "knowledge": sample_candidates,
+                    }
+                    for query_id, sample_candidates in zip(queries_ids, candidates)
+                ]
+            else:
+                results = [
+                    {
+                        "id": self.query_dataset[query_id]["id"],
+                        "context": self.query_dataset[query_id]["text"][:-1],
+                        "response": self.query_dataset[query_id]["text"][-1],
+                        "knowledge": sample_candidates,
+                    }
+                    for query_id, sample_candidates in zip(queries_ids, candidates)
+                ]
 
             # Save to file
             with open(self.output, "w") as f:

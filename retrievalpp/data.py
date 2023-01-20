@@ -8,8 +8,12 @@ from transformers.utils import PaddingStrategy
 
 def build_samples(samples, indices, args, tokenizer):
     # Select data
-    contexts = [" ".join(turns[:-1]) for turns in samples["text"]]
-    answers = [turns[-1] for turns in samples["text"]]
+    if "delexicalized" in samples[0]:
+        contexts = [" ".join(turns) for turns in samples["context"]]
+        answers = samples["delexicalized"]
+    else:
+        contexts = [" ".join(turns[:-1]) for turns in samples["text"]]
+        answers = [turns[-1] for turns in samples["text"]]
 
     # Tokenize
     context_inputs = tokenizer(

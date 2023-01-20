@@ -100,15 +100,21 @@ def get_subdialogues(dataset):
             start = max(0, i - args.max_nturns + 1)
 
             sample_id = f"{dialogue}_{start}-{i+1}"
-            text = [
+            context = [
                 f"{turn['speaker'].capitalize()}: {turn['response']}"
                 for turn in turns[start:i]
             ]
-            text.append(
+            response = f"{turns[i]['speaker'].capitalize()}: {turns[i]['response']}"
+            delexicalized = (
                 f"{turns[i]['speaker'].capitalize()}: {turns[i]['delexicalized']}"
             )
 
-            sample = {"id": sample_id, "text": text}
+            sample = {
+                "id": sample_id,
+                "context": context,
+                "response": response,
+                "delexicalized": delexicalized,
+            }
             new_dataset.append(sample)
 
     return new_dataset
