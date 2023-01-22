@@ -15,7 +15,6 @@ class RetrievalTrainer(Trainer):
         self,
         heuristic="rouge",
         n_candidates=10,
-        retrieval_exclude_indices=None,
         loss_fn="cross_entropy",
         **kwargs,
     ):
@@ -38,12 +37,6 @@ class RetrievalTrainer(Trainer):
 
         self.n_candidates = n_candidates
         self.loss_fn = loss_fn
-
-        if retrieval_exclude_indices:
-            with open(retrieval_exclude_indices, "r") as f:
-                self.exclude_indices = json.load(f)
-        else:
-            self.exclude_indices = None
 
         self.index_idx = None
 

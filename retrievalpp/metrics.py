@@ -64,14 +64,13 @@ class RetrievalMetrics:
             ]
         )
 
-        # Get scores from best candidate and average
-        best_bleu = np.argmax(bleu_scores, axis=1)
-        best_rouge = np.argmax(rouge_scores, axis=1)
-
-        bleu_score = bleu_scores[best_bleu].mean()
-        rouge_score = rouge_scores[best_rouge].mean()
+        # Get average scores for all candidates
+        bleu_score = bleu_scores.mean()
+        rouge_score = rouge_scores.mean()
 
         # Compute MRR from BLEU and ROUGE
+        best_bleu = np.argmax(bleu_scores, axis=1)
+        best_rouge = np.argmax(rouge_scores, axis=1)
         mrr_bleu = np.reciprocal(best_bleu + 1.0).mean()
         mrr_rouge = np.reciprocal(best_rouge + 1.0).mean()
 

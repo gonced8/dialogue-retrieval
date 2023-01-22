@@ -12,7 +12,7 @@ from transformers import (
 )
 
 
-def build_samples(samples):
+def build_samples(samples, args, tokenizer):
     input_texts = []
 
     for context, knowledge in zip(samples["context"], samples["knowledge"]):
@@ -25,6 +25,8 @@ def build_samples(samples):
 
         input_texts.append(input_text)
 
+    responses = samples["delexicalized"] if args.delexicalized else samples["response"]
+
     model_inputs = tokenizer(
         input_texts,
         max_length=args.max_input_length,
@@ -32,7 +34,7 @@ def build_samples(samples):
         return_length=True,
     )
     labels = tokenizer(
-        samples["response"],
+        responses,
         max_length=args.max_output_length,
         truncation=True,
         return_attention_mask=False,
@@ -117,6 +119,7 @@ if __name__ == "__main__":
         "--resume_from_checkpoint", default=False, action=BooleanOptionalAction
     )
     parser.add_argument("--checkpoint", type=str)
+    parser.add_argument("--delexicalized", default=False, action=BooleanOptionalAction)
     args = parser.parse_args()
 
     # Load dataset
@@ -127,7 +130,10 @@ if __name__ == "__main__":
     # Prepare samples
     tokenizer = AutoTokenizer.from_pretrained("microsoft/GODEL-v1_1-base-seq2seq")
     dataset = dataset.map(
-        build_samples, batched=True, batch_size=args.preprocess_batch_size
+        build_samples,
+        batched=True,
+        batch_size=args.preprocess_batch_size,
+        fn_kwargs={"args": args, "tokenizer": tokenizer},
     )
     dataset.set_format(
         type="torch",

@@ -41,6 +41,7 @@ def build_samples(samples):
         "<pad>SYSTEM: ",
         max_length=args.max_output_length,
         truncation=True,
+        add_special_tokens=False,
         return_attention_mask=False,
         return_length=True,
     )

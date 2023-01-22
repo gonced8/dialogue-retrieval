@@ -28,7 +28,7 @@ def generate_index(index_dataloader, encoder, index_key="answer"):
         all_embeddings.append(embeddings.cpu().numpy())
 
         # Update ids arrays
-        idx.extend(batch["idx"])
+        idx.extend(batch["idx"].tolist())
         ids.extend(batch["id"])
 
     all_embeddings = np.concatenate(all_embeddings)
@@ -76,7 +76,7 @@ def retrieve(
 
     # Get maximum of possible leaked candidates
     if queries_ids:
-        queries_base_ids = [query_id.rsplit("\n", 1)[0] for query_id in queries_ids]
+        queries_base_ids = [query_id.rsplit("_", 1)[0] for query_id in queries_ids]
         max_leak = max(
             len(exclude_idx.get(query_base_id, []))
             for query_base_id in queries_base_ids
