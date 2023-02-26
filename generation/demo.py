@@ -12,11 +12,11 @@ import streamlit as st
 
 class GodelGenerationPipeline(Text2TextGenerationPipeline):
     def preprocess(self, inputs):
-        model_input = self.build_samples(inputs, self.tokenizer)
+        model_input = self.build_sample(inputs, self.tokenizer)
         return model_input
 
     @staticmethod
-    def build_samples(sample, tokenizer):
+    def build_sample(sample, tokenizer):
         input_text = " EOS ".join(sample["context"])
         if sample["knowledge"]:
             knowledge = " | ".join(sample["knowledge"])
@@ -46,7 +46,7 @@ def init():
 
     # Load tokenizer and model
     tokenizer = AutoTokenizer.from_pretrained("microsoft/GODEL-v1_1-base-seq2seq")
-    model = AutoModelForSeq2SeqLM.from_pretrained(args.model)
+    model = AutoModelForSeq2SeqLM.from_pretrained(args.model).eval()
 
     # Initialize pipeline
     generator = GodelGenerationPipeline(

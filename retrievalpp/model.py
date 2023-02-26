@@ -1,15 +1,19 @@
 import torch
-from transformers import AutoConfig, AutoModel, PreTrainedModel, PretrainedConfig
+from transformers import AutoModel, PreTrainedModel, PretrainedConfig
 
 
 class EncoderConfig(PretrainedConfig):
     model_type = "encodermodel"
 
     def __init__(
-        self, base_model="sentence-transformers/multi-qa-mpnet-base-dot-v1", **kwargs
+        self,
+        base_model="sentence-transformers/multi-qa-mpnet-base-dot-v1",
+        activation_fn="cls",
+        **kwargs
     ) -> None:
         super().__init__(**kwargs)
         self.base_model = base_model
+        self.activation_fn = activation_fn
 
 
 class EncoderModel(PreTrainedModel):
@@ -21,13 +25,16 @@ class EncoderModel(PreTrainedModel):
 
         # Initialize model
         self.model = AutoModel.from_pretrained(config.base_model)
+        self.activation_fn = (
+            self.cls_pooling if config.activation_fn == "cls" else self.mean_pooling
+        )
 
     def forward(self, **inputs):
         model_output = self.model(**inputs)
-        return self.cls_pooling(model_output)
+        return self.activation_fn(model_output, inputs["attention_mask"])
 
     @staticmethod
-    def cls_pooling(model_output):
+    def cls_pooling(model_output, attention_mask=None):
         return model_output.last_hidden_state[:, 0]
 
     @staticmethod
@@ -50,11 +57,13 @@ class RetrievalConfig(PretrainedConfig):
         self,
         base_model="sentence-transformers/multi-qa-mpnet-base-dot-v1",
         dual=False,
+        activation_fn="cls",
         **kwargs
     ) -> None:
         super().__init__(**kwargs)
         self.base_model = base_model
         self.dual = dual
+        self.activation_fn = activation_fn
 
 
 class RetrievalModel(PreTrainedModel):
@@ -65,8 +74,8 @@ class RetrievalModel(PreTrainedModel):
         self.config = config
 
         # Initialize models
-        config_question = EncoderConfig(config.base_model)
-        config_answer = EncoderConfig(config.base_model)
+        config_question = EncoderConfig(config.base_model, config.activation_fn)
+        config_answer = EncoderConfig(config.base_model, config.activation_fn)
         self.encoder_question = EncoderModel(config_question)
         self.encoder_answer = (
             EncoderModel(config_answer) if self.config.dual else self.encoder_question

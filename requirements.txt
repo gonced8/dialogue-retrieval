@@ -2,14 +2,14 @@
 
 autofaiss==2.15.0
 bert_score==0.3.12
-datasets==2.4.0
+datasets==2.8.0
 evaluate==0.4.0
 jsonlines
 matplotlib==3.5.2
 numpy
 openpyxl
 pandas
-pyserini==0.17.1
+pyserini==0.20.0
 pytorch-lightning==1.6.5
 rouge-score==0.1.2
 sacrebleu==2.3.1

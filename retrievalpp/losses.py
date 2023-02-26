@@ -110,6 +110,21 @@ def compare_scores_diff(scores_h, scores_m):
     return (diff_scores_h - diff_scores_m) ** 2
 
 
+def correlation_loss(scores_h, scores_m):
+    # Flatten scores
+    scores_h = torch.flatten(scores_h)
+    scores_m = torch.flatten(scores_m)
+
+    # Compute CCC
+    cov = torch.cov(torch.stack((scores_h, scores_m)))
+    u_h = torch.mean(scores_h)
+    u_m = torch.mean(scores_m)
+
+    ccc = 2 * cov[0, 1] / (cov[0, 0] + cov[1, 1] + (u_h - u_m) ** 2)
+
+    return 1 - ccc
+
+
 class M3SE(torch.nn.Module):
     def __init__(self, scale: float = 20.0, similarity_fct=cos_sim):
         """From Luís Borges

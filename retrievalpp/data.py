@@ -6,14 +6,40 @@ from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.utils import PaddingStrategy
 
 
+def vary_context_length(samples, args):
+    # Expand each dialogue into multiple subdialogues (varying context length)
+    keys = samples.keys()
+    expanded_samples = {k: [] for k in keys}
+
+    for sample_values in zip(*samples.values()):
+        sample = dict(zip(keys, sample_values))
+
+        sample_id = sample.pop("id")
+        context = sample.pop("context")
+        response = sample.pop("response")
+
+        name, start_end = sample_id.rsplit("_", 1)
+        start, end = map(int, start_end.split("-"))
+        length = min(len(context), args.max_nturns)
+        # TODO: check if max_nturns or max_nturns+1
+
+        for i in range(length, 0, -1):
+            expanded_samples["id"].append(f"{name}_{end-i}-{end}")
+            expanded_samples["context"].append(context[-i:])
+            expanded_samples["response"].append(response)
+
+            for k, v in sample:
+                expanded_samples[k].append(v)
+
+    return expanded_samples
+
+
 def build_samples(samples, indices, args, tokenizer):
     # Select data
-    if "delexicalized" in samples:
-        contexts = [" ".join(turns) for turns in samples["context"]]
-        answers = samples["delexicalized"]
-    else:
-        contexts = [" ".join(turns[:-1]) for turns in samples["text"]]
-        answers = [turns[-1] for turns in samples["text"]]
+    contexts = [" ".join(turns) for turns in samples["context"]]
+    answers = (
+        samples["delexicalized"] if "delexicalized" in samples else samples["response"]
+    )
 
     # Tokenize
     context_inputs = tokenizer(
@@ -30,11 +56,20 @@ def build_samples(samples, indices, args, tokenizer):
     )
 
     # Verify if possible truncation
-    if any(sample_len == args.max_length for sample_len in context_inputs["length"]):
-        print("WARNING: Possible truncation occurring in input_ids.")
+    overflow = {
+        "overflow": [
+            input_length == args.max_length or output_length == args.max_length
+            for input_length, output_length in zip(
+                context_inputs["length"], answer_inputs["length"]
+            )
+        ]
+    }
 
-    if any(sample_len == args.max_length for sample_len in answer_inputs["length"]):
-        print("WARNING: Possible truncation occurring in answer_input_ids.")
+    possible_overflow = sum(overflow["overflow"])
+    if possible_overflow:
+        print(
+            f"WARNING: Possible overflow in {possible_overflow} out of {len(samples['id'])} samples."
+        )
 
     return {
         "idx": indices,
@@ -43,7 +78,7 @@ def build_samples(samples, indices, args, tokenizer):
         "attention_mask": context_inputs["attention_mask"],
         "answer_input_ids": answer_inputs["input_ids"],
         "answer_attention_mask": answer_inputs["attention_mask"],
-    }
+    } | overflow
 
 
 @dataclass

@@ -8,13 +8,17 @@ from tqdm.contrib import tzip
 
 
 class RetrievalMetrics:
-    def __init__(self, index_dataset, query_dataset, output=None):
+    def __init__(self, index_dataset, query_dataset, field="data", output=None):
         # Load datasets
         with open(index_dataset, "r") as f:
-            self.index_dataset = json.load(f)["data"]
+            self.index_dataset = json.load(f)
+            if field:
+                self.index_dataset = self.index_dataset[field]
 
         with open(query_dataset, "r") as f:
-            self.query_dataset = json.load(f)["data"]
+            self.query_dataset = json.load(f)
+            if field:
+                self.index_dataset = self.index_dataset[field]
 
         # Name of file where output metrics and retrieval results will be saved
         self.output = output
@@ -25,18 +29,39 @@ class RetrievalMetrics:
 
     def __call__(self, eval_pred):
         candidates_ids, queries_ids = eval_pred
-        if "delexicalized" in self.index_dataset[0]:
-            candidates = [
-                [self.index_dataset[idx]["delexicalized"] for idx in sample_candidates]
-                for sample_candidates in candidates_ids
-            ]
-            answers = [self.query_dataset[idx]["delexicalized"] for idx in queries_ids]
-        else:
-            candidates = [
-                [self.index_dataset[idx]["text"][-1] for idx in sample_candidates]
-                for sample_candidates in candidates_ids
-            ]
-            answers = [self.query_dataset[idx]["text"][-1] for idx in queries_ids]
+
+        # Gather dataset text
+        dataset = [
+            {
+                "id": self.query_dataset[query_id]["id"],
+                "context": self.query_dataset[query_id]["context"],
+                "response": self.query_dataset[query_id]["response"],
+                "delexicalized": self.query_dataset[query_id]["delexicalized"]
+                if "delexicalized" in self.index_dataset[0]
+                else None,
+                "knowledge": [
+                    self.index_dataset[idx]["delexicalized"]
+                    if "delexicalized" in self.index_dataset[0]
+                    else self.index_dataset[idx]["response"]
+                    for idx in sample_candidates
+                ],
+            }
+            for query_id, sample_candidates in zip(queries_ids, candidates_ids)
+        ]
+
+        # Strip system initial token
+        candidates = [
+            [candidate.lstrip("System: ") for candidate in sample["knowledge"]]
+            for sample in dataset
+        ]
+        answers = [
+            (
+                sample["delexicalized"]
+                if "delexicalized" in self.index_dataset[0]
+                else sample["response"]
+            ).lstrip("System: ")
+            for sample in dataset
+        ]
 
         # Compute BLEU scores
         bleu_scores = np.array(
@@ -68,48 +93,32 @@ class RetrievalMetrics:
         bleu_score = bleu_scores.mean()
         rouge_score = rouge_scores.mean()
 
+        # Get average scores for best candidates
+        bleu_best = np.argmax(bleu_scores, axis=1)
+        rouge_best = np.argmax(rouge_scores, axis=1)
+
+        bleu_best_score = bleu_scores[:, bleu_best].mean()
+        rouge_best_score = rouge_scores[:, rouge_best].mean()
+
         # Compute MRR from BLEU and ROUGE
-        best_bleu = np.argmax(bleu_scores, axis=1)
-        best_rouge = np.argmax(rouge_scores, axis=1)
-        mrr_bleu = np.reciprocal(best_bleu + 1.0).mean()
-        mrr_rouge = np.reciprocal(best_rouge + 1.0).mean()
+        mrr_bleu = np.reciprocal(bleu_best + 1.0).mean()
+        mrr_rouge = np.reciprocal(rouge_best + 1.0).mean()
 
         metrics = {
             "bleu": bleu_score,
             "rouge": rouge_score,
+            "bleu_best": bleu_best_score,
+            "rouge_best": rouge_best_score,
             "mrr_bleu": mrr_bleu,
             "mrr_rouge": mrr_rouge,
         }
 
         if self.output is not None:
-            # Retrieval results
-            if "delexicalized" in self.index_dataset[0]:
-                results = [
-                    {
-                        "id": self.query_dataset[query_id]["id"],
-                        "context": self.query_dataset[query_id]["context"],
-                        "response": self.query_dataset[query_id]["response"],
-                        "delexicalized": self.query_dataset[query_id]["delexicalized"],
-                        "knowledge": sample_candidates,
-                    }
-                    for query_id, sample_candidates in zip(queries_ids, candidates)
-                ]
-            else:
-                results = [
-                    {
-                        "id": self.query_dataset[query_id]["id"],
-                        "context": self.query_dataset[query_id]["text"][:-1],
-                        "response": self.query_dataset[query_id]["text"][-1],
-                        "knowledge": sample_candidates,
-                    }
-                    for query_id, sample_candidates in zip(queries_ids, candidates)
-                ]
-
             # Save to file
             with open(self.output, "w") as f:
                 version = Path(self.output).stem
                 json.dump(
-                    {"version": version, "metrics": metrics, "data": results},
+                    {"version": version, "metrics": metrics, "data": dataset},
                     f,
                     indent=4,
                 )

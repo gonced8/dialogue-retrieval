@@ -66,6 +66,14 @@ class RetrievalTrainer(Trainer):
             loss = compare_scores_diff(scores_h, scores_m)
             loss = torch.mean(loss)
 
+        elif self.loss_fn == "correlation":
+            scores_h = heuristic_score(
+                self.heuristic_fn, inputs["answer"], context_embeddings.device
+            )
+            scores_m = dot_score(context_embeddings, answer_embeddings)
+
+            loss = correlation_loss(scores_h, scores_m)
+
         return (
             (loss, (context_embeddings, answer_embeddings)) if return_outputs else loss
         )
@@ -114,6 +122,7 @@ class RetrievalTrainer(Trainer):
                 self.n_candidates,
                 outputs=context_embeddings,
                 index_key="context",
+                # index_key="answer",
                 queries_ids=inputs["id"],
             )
 

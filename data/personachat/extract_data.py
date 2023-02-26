@@ -7,15 +7,35 @@ import os
 import datasets
 
 
-def build_samples(sample, index):
+def build_samples1(sample, index, args):
     context = [
         speaker + utterance
         for speaker, utterance in zip(
-            itertools.cycle(["USER: ", "SYSTEM: "]), sample["history"][-5:]
+            itertools.cycle(["User: ", "System: "]),
+            sample["history"][-args.nturns + 1 :],
+        )
+    ]
+    response = "System: " + sample["candidates"][-1]
+    persona = sample["personality"]
+
+    return {
+        "id": str(index),
+        "context": context,
+        "response": response,
+        "persona": persona,
+    }
+
+
+def build_samples2(sample, index, args):
+    context = [
+        speaker + utterance
+        for speaker, utterance in zip(
+            itertools.cycle(["User: ", "System: "]),
+            sample["history"][-args.nturns + 1 :],
         )
     ]
     knowledge = sample["personality"]
-    response = "SYSTEM: " + sample["candidates"][-1]
+    response = "System: " + sample["candidates"][-1]
 
     return {
         "id": str(index),
@@ -27,7 +47,14 @@ def build_samples(sample, index):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="From the original PersonaCHat files, extracts a clean dataset with utterances."
+        description="From the original PersonaChat files, extracts a clean dataset with utterances."
+    )
+    parser.add_argument(
+        "-m",
+        "--mode",
+        type=str,
+        default="retrieval",
+        choices=["retrieval", "generation"],
     )
     parser.add_argument(
         "-o",
@@ -37,6 +64,7 @@ if __name__ == "__main__":
         help="Folder for processed dialogues output files",
     )
     parser.add_argument("--seed", type=int, default=42, help="seed")
+    parser.add_argument("-n", "--nturns", type=int, default=6)
     parser.add_argument("-d", "--debug", action="store_true", help="Debug mode.")
     args = parser.parse_args()
 
@@ -54,9 +82,10 @@ if __name__ == "__main__":
     # Build samples
     print("Building samples...")
     dataset = dataset.map(
-        build_samples,
+        build_samples1 if args.mode == "retrieval" else build_samples2,
         remove_columns=dataset["train"].column_names,
         with_indices=True,
+        fn_kwargs={"args": args},
     )
 
     # Save data
