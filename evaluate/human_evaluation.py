@@ -86,7 +86,9 @@ def format_samples(data: dict, ground_truth: bool = True) -> list[dict]:
                 "id": samples[0]["id"],
                 "context": samples[0]["context"],
                 "response": (
-                    {"ground_truth": samples[0]["response"]} if ground_truth else {}
+                    {"ground_truth": samples[0]["delexicalized"]}
+                    if ground_truth
+                    else {}
                 )
                 | {name: get_response(sample) for name, sample in zip(names, samples)},
             }
