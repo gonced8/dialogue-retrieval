@@ -161,7 +161,7 @@ def format_excel(filename: str) -> None:
 
         # Width for each column
         if col_name == "id":
-            width = 16
+            width = 15
             horizontal = "center"
             vertical = "center"
         elif col_name == "context":
