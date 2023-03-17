@@ -1,0 +1,5 @@
+../generation/results/test_multiwoz_none_delexicalized.json                    0.561404
+../generation/results/test_multiwoz_retrieval_delexicalized_heuristic.json     0.526316
+../retrievalpp/results/test_retriever_multiwoz_delexicalized_heuristic.json    0.491228
+ground_truth                                                                   0.701754
+dtype: float64
