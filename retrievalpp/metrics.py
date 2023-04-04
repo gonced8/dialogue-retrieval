@@ -1,3 +1,4 @@
+from datetime import datetime
 import json
 from pathlib import Path
 
@@ -18,9 +19,9 @@ class RetrievalMetrics:
         with open(query_dataset, "r") as f:
             self.query_dataset = json.load(f)
             if field:
-                self.index_dataset = self.index_dataset[field]
+                self.query_dataset = self.query_dataset[field]
 
-        # Name of file where output metrics and retrieval results will be saved
+        # Name of folder where output metrics and retrieval results will be saved
         self.output = output
 
         # Load metrics
@@ -113,15 +114,23 @@ class RetrievalMetrics:
             "mrr_rouge": mrr_rouge,
         }
 
-        if self.output is not None:
-            # Save to file
-            with open(self.output, "w") as f:
-                version = Path(self.output).stem
+        # Save validation results
+        if self.output:
+            output_file = Path(self.output) / (
+                datetime.now().strftime("%Y-%m-%d_%H%M%S") + ".json"
+            )
+
+            with open(output_file, "w", encoding="utf-8") as f:
                 json.dump(
-                    {"version": version, "metrics": metrics, "data": dataset},
+                    {
+                        "version": Path(self.output).name,
+                        "metrics": metrics,
+                        "data": dataset,
+                    },
                     f,
                     indent=4,
+                    ensure_ascii=False,
                 )
-            print(f"Saved results to: {self.output}")
+            print(f"Saved to: {output_file}")
 
         return metrics

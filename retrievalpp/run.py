@@ -41,12 +41,12 @@ if __name__ == "__main__":
     parser.add_argument("--max_length", type=int, default=512)
     parser.add_argument("--num_train_epochs", type=int, default=20)
     parser.add_argument("--learning_rate", type=float, default=5e-5)
-    parser.add_argument("--train_batch_size", type=int, default=32)
-    parser.add_argument("--val_batch_size", type=int, default=32)
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=2)
+    parser.add_argument("--train_batch_size", type=int, default=64)
+    parser.add_argument("--val_batch_size", type=int, default=64)
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
     parser.add_argument("--logging_steps", type=int, default=10)
-    parser.add_argument("--eval_steps", type=int, default=3100)
-    parser.add_argument("--save_steps", type=int, default=3100)
+    parser.add_argument("--eval_steps", type=int, default=2500)
+    parser.add_argument("--save_steps", type=int, default=2500)
     parser.add_argument("--metric_for_best_model", type=str, default="loss")
     parser.add_argument(
         "--resume_from_checkpoint", default=False, action=BooleanOptionalAction
@@ -88,7 +88,7 @@ if __name__ == "__main__":
         data_files["validation"] = args.val_dataset
     if args.test_dataset:
         data_files["test"] = args.test_dataset
-    dataset = load_dataset("json", data_files=data_files)
+    dataset = load_dataset("json", data_files=data_files, field=args.data_field)
 
     # Prepare samples
     if args.expand_samples:
@@ -144,7 +144,7 @@ if __name__ == "__main__":
         eval_steps=args.eval_steps,
         logging_steps=args.logging_steps,
         save_steps=args.save_steps,
-        save_total_limit=1,
+        save_total_limit=2,
         metric_for_best_model=args.metric_for_best_model,
         load_best_model_at_end=True,
         remove_unused_columns=False,

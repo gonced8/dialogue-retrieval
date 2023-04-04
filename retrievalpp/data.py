@@ -38,7 +38,9 @@ def build_samples(samples, indices, args, tokenizer):
     # Select data
     contexts = [" ".join(turns) for turns in samples["context"]]
     answers = (
-        samples["delexicalized"] if "delexicalized" in samples else samples["response"]
+        samples["delexicalized"]
+        if args.delexicalized and "delexicalized" in samples
+        else samples["response"]
     )
 
     # Tokenize

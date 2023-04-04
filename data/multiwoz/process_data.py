@@ -76,7 +76,8 @@ def process_data(args):
 
             sample_id = f"{d_id}_{start}-{i}"
             text = [
-                f"{turn['speaker']}: " + turn["utterance"] for turn in dialogue[start:i]
+                f"{turn['speaker'].capitalize()}: " + turn["utterance"]
+                for turn in dialogue[start:i]
             ]
             annotations = sequence[start:i]
 
