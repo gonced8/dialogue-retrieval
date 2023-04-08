@@ -45,8 +45,8 @@ if __name__ == "__main__":
     parser.add_argument("--val_batch_size", type=int, default=64)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
     parser.add_argument("--logging_steps", type=int, default=10)
-    parser.add_argument("--eval_steps", type=int, default=2500)
-    parser.add_argument("--save_steps", type=int, default=2500)
+    parser.add_argument("--eval_steps", type=int, default=500)
+    parser.add_argument("--save_steps", type=int, default=500)
     parser.add_argument("--metric_for_best_model", type=str, default="loss")
     parser.add_argument(
         "--resume_from_checkpoint", default=False, action=BooleanOptionalAction
@@ -70,6 +70,7 @@ if __name__ == "__main__":
         "--max_nturns", type=int, default=5, help="Maximum length of context."
     )
     parser.add_argument("--data_field", type=none_or_str, default="data")
+    parser.add_argument("--delexicalized", default=False, action=BooleanOptionalAction)
     args = parser.parse_args()
 
     # Initialize model and tokenizer
@@ -153,6 +154,20 @@ if __name__ == "__main__":
         logging_strategy="steps" if args.logging else "no",
     )
 
+    # Initialize metrics
+    metrics = RetrievalMetrics(
+        index_dataset=args.train_dataset,
+        query_dataset=args.val_dataset if args.val_dataset else args.test_dataset,
+        field=args.data_field,
+        output=args.output,
+        delexicalized=args.delexicalized,
+    )
+
+    # Initialize callbacks
+    callbacks = [
+        EarlyStoppingCallback(early_stopping_patience=5, early_stopping_threshold=1e-4)
+    ]
+
     # Create Trainer
     trainer = RetrievalTrainer(
         model=model,
@@ -160,17 +175,8 @@ if __name__ == "__main__":
         data_collator=data_collator,
         train_dataset=dataset["train"] if args.train_dataset else None,
         eval_dataset=dataset["validation"] if args.val_dataset else None,
-        compute_metrics=RetrievalMetrics(
-            index_dataset=args.train_dataset,
-            query_dataset=args.val_dataset if args.val_dataset else args.test_dataset,
-            field=args.data_field,
-            output=args.output,
-        ),
-        # callbacks=[
-        #    EarlyStoppingCallback(
-        #        early_stopping_patience=5, early_stopping_threshold=1e-4
-        #    )
-        # ],
+        compute_metrics=metrics,
+        callbacks=callbacks,
         heuristic=args.heuristic,
         n_candidates=args.n_candidates,
         loss_fn=args.loss_fn,
@@ -178,6 +184,7 @@ if __name__ == "__main__":
 
     # Run
     if args.mode == "train":
+        trainer.evaluate()
         trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)
     elif args.mode == "validation":
         trainer.evaluate()

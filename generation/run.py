@@ -1,8 +1,11 @@
 from argparse import ArgumentParser, BooleanOptionalAction
+from dataclasses import dataclass
 import json
+from typing import Any, Dict, List, Optional, Union
 
 from datasets import load_dataset
 import evaluate
+import torch
 from transformers import (
     AutoTokenizer,
     AutoModelForSeq2SeqLM,
@@ -11,15 +14,21 @@ from transformers import (
     Seq2SeqTrainingArguments,
     Seq2SeqTrainer,
 )
+from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+from transformers.utils import PaddingStrategy
+
+instruction = "You are a customer service system. Your task is to answer in a empathic, informative and useful way."
 
 
 def build_samples(samples, args, tokenizer):
     input_texts = []
+    samples_knowledge = []
 
     for context, knowledge in zip(samples["context"], samples["knowledge"]):
         input_text = " EOS ".join(context)
         if knowledge and args.candidates > 0:
             unique_knowledge = [*set(knowledge)]  # Remove duplicate candidates
+            samples_knowledge.append(unique_knowledge[: args.candidates])
             knowledge = " | ".join(unique_knowledge[: args.candidates])
             input_text += " <|Knowledge|> " + knowledge
         input_text += " => "
@@ -28,13 +37,28 @@ def build_samples(samples, args, tokenizer):
 
     responses = samples["delexicalized"] if args.delexicalized else samples["response"]
 
-    model_inputs = tokenizer(
+    # Tokenize inputs
+    inputs = tokenizer(
         input_texts,
         max_length=args.max_input_length,
         truncation=True,
         return_length=True,
     )
 
+    # Tokenize decoder inputs
+    decoder_inputs = tokenizer(
+        "<pad>System: ",
+        max_length=args.max_output_length,
+        truncation=True,
+        add_special_tokens=False,
+        return_attention_mask=True,
+    )
+    decoder_inputs["input_ids"] = [decoder_inputs["input_ids"]] * len(samples["id"])
+    decoder_inputs["attention_mask"] = [decoder_inputs["attention_mask"]] * len(
+        samples["id"]
+    )
+
+    # Tokenize labels
     labels = tokenizer(
         responses,
         max_length=args.max_output_length,
@@ -43,39 +67,114 @@ def build_samples(samples, args, tokenizer):
         return_length=True,
     )
 
-    # decoder_input_ids = tokenizer(
-    #     "<pad>SYSTEM: ",
-    #     max_length=args.max_output_length,
-    #     truncation=True,
-    #     add_special_tokens=False,
-    #     return_attention_mask=False,
-    #     return_length=True,
-    # )
-
     # Verify if possible truncation
-    if any(
-        sample_len == args.max_input_length for sample_len in model_inputs["length"]
-    ):
-        print("WARNING: Possible truncation occurring in input_ids.")
+    overflow = {
+        "overflow": [
+            input_length == args.max_input_length
+            or output_length == args.max_output_length
+            for input_length, output_length in zip(inputs["length"], labels["length"])
+        ]
+    }
 
-    if any(sample_len == args.max_output_length for sample_len in labels["length"]):
-        print("WARNING: Possible truncation occurring in labels.")
-
-    # if any(
-    #     sample_len == args.max_output_length
-    #     for sample_len in decoder_input_ids["length"]
-    # ):
-    #     print("WARNING: Possible truncation occurring in labels.")
-
-    # Repeat decoder input ids for every sample
-    # decoder_input_ids = [decoder_input_ids["input_ids"].copy() for _ in samples["id"]]
+    possible_overflow = sum(overflow["overflow"])
+    if possible_overflow:
+        print(
+            f"WARNING: Possible overflow in {possible_overflow} out of {len(samples['id'])} samples."
+        )
 
     return {
-        "input_ids": model_inputs["input_ids"],
-        "attention_mask": model_inputs["attention_mask"],
+        "knowledge": samples_knowledge,
+        "input_ids": inputs["input_ids"],
+        "attention_mask": inputs["attention_mask"],
+        "decoder_input_ids": decoder_inputs["input_ids"],
+        "decoder_attention_mask": decoder_inputs["attention_mask"],
         "labels": labels["input_ids"],
-        # "decoder_input_ids": decoder_input_ids,
+    } | overflow
+
+
+def build_samples_prompt(samples, args, tokenizer):
+    # Get input text (prompts)
+    global instruction
+    prompts = []
+    samples_knowledge = []
+
+    for context, knowledge in zip(samples["context"], samples["knowledge"]):
+        # Add instruction
+        prompt = instruction
+
+        # Add retrieved information
+        if knowledge and args.candidates > 0:
+            unique_knowledge = list(set(knowledge))  # Remove duplicate candidates
+            samples_knowledge.append(unique_knowledge[: args.candidates])
+            possible_answers = "\n".join(unique_knowledge[: args.candidates])
+
+            prompt += f"Based on the possible answers below, answer the last conversation.\nPossible answers:\n{possible_answers}\n"
+        else:
+            prompt += "Answer the conversation.\n"
+
+        # Add context
+        context = "\n".join(context)
+        prompt += f"Conversation:\n{context}"
+
+        prompts.append(prompt)
+
+    # Tokenize inputs
+    inputs = tokenizer(
+        prompts,
+        max_length=args.max_input_length,
+        truncation=True,
+        return_length=True,
+    )
+
+    if args.mode == "test":
+        labels = {"length": [None] * len(samples["response"])}
+
+        # Tokenize decoder inputs
+        decoder_inputs = tokenizer(
+            "<pad>System: ",
+            max_length=args.max_output_length,
+            truncation=True,
+            add_special_tokens=False,
+            return_attention_mask=True,
+        )
+        decoder_inputs = {
+            "decoder_input_ids": [decoder_inputs["input_ids"]] * len(samples["id"]),
+            "decoder_attention_mask": [decoder_inputs["attention_mask"]]
+            * len(samples["id"]),
+        }
+    else:
+        # Tokenize labels
+        labels = tokenizer(
+            samples["response"],
+            max_length=args.max_output_length,
+            truncation=True,
+            return_attention_mask=False,
+            return_length=True,
+        )
+
+        decoder_inputs = {}
+
+    # Verify if possible truncation
+    overflow = {
+        "overflow": [
+            input_length == args.max_input_length
+            or output_length == args.max_output_length
+            for input_length, output_length in zip(inputs["length"], labels["length"])
+        ]
     }
+
+    possible_overflow = sum(overflow["overflow"])
+    if possible_overflow:
+        print(
+            f"WARNING: Possible overflow in {possible_overflow} out of {len(samples['id'])} samples."
+        )
+
+    inputs.pop("length")
+    labels.pop("length")
+
+    return (
+        {"knowledge": samples_knowledge} | inputs | labels | decoder_inputs | overflow
+    )
 
 
 def compute_metrics(eval_pred):
@@ -115,6 +214,78 @@ def preprocess_logits_for_metrics(logits, labels):
     return logits.argmax(dim=-1)
 
 
+class Seq2SeqTrainerWithSave(Seq2SeqTrainer):
+    def __init__(
+        self,
+        output: str = None,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.output = output
+
+        # Create output file
+        if self.output:
+            open(self.output, "w").close()
+            print(f"Created file: {self.output}")
+
+    def prediction_step(
+        self, model, inputs, prediction_loss_only=None, ignore_keys=None
+    ):
+        loss, logits, labels = super().prediction_step(
+            model, inputs, prediction_loss_only, ignore_keys
+        )
+
+        if self.output is not None:
+            self.save_results(self.output, inputs, logits)
+
+        return loss, logits, labels
+
+    @staticmethod
+    def save_results(output, samples, pred_ids):
+        # Pad masked tokens
+        pred_ids[pred_ids == -100] = tokenizer.pad_token_id
+
+        # Decode tensors
+        predictions = tokenizer.batch_decode(
+            pred_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True
+        )
+
+        with open(output, "a") as f:
+            for id, context, reference, prediction, knowledge in zip(
+                samples["id"],
+                samples["context"],
+                samples["response"],
+                predictions,
+                samples["knowledge"],
+            ):
+                f.write(
+                    json.dumps(
+                        {
+                            "id": id,
+                            "context": context,
+                            "reference": reference,
+                            "prediction": prediction,
+                            "knowledge": knowledge,
+                        }
+                    )
+                    + "\n"
+                )
+
+
+@dataclass
+class DataCollatorForSeq2SeqWithText(DataCollatorForSeq2Seq):
+    def __call__(self, features, return_tensors=None):
+        text_keys = [k for k, v in features[0].items() if not torch.is_tensor(v)]
+        text_features = {k: [sample.pop(k) for sample in features] for k in text_keys}
+
+        batch = super().__call__(features, return_tensors)
+
+        # Add text features
+        batch.update(text_features)
+
+        return batch
+
+
 if __name__ == "__main__":
     # Arguments
     parser = ArgumentParser()
@@ -137,7 +308,7 @@ if __name__ == "__main__":
     parser.add_argument("--learning_rate", type=float, default=5e-5)
     parser.add_argument("--train_batch_size", type=int, default=8)
     parser.add_argument("--val_batch_size", type=int, default=8)
-    parser.add_argument("--test_batch_size", type=int, default=8)
+    parser.add_argument("--test_batch_size", type=int, default=64)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=8)
     parser.add_argument("--logging_steps", type=int, default=10)
     parser.add_argument(
@@ -152,6 +323,7 @@ if __name__ == "__main__":
     parser.add_argument("--delexicalized", default=False, action=BooleanOptionalAction)
     parser.add_argument("--do_sample", default=False, action=BooleanOptionalAction)
     parser.add_argument("--results", type=str)
+    parser.add_argument("--prompt", default=False, action=BooleanOptionalAction)
     args = parser.parse_args()
 
     # Load dataset
@@ -167,16 +339,33 @@ if __name__ == "__main__":
     # Prepare samples
     tokenizer = AutoTokenizer.from_pretrained(args.model)
     dataset = dataset.map(
-        build_samples,
+        build_samples_prompt if args.prompt else build_samples,
         batched=True,
         batch_size=args.preprocess_batch_size,
         fn_kwargs={"args": args, "tokenizer": tokenizer},
     )
 
+    # Filter overflowing samples
+    dataset = dataset.filter(lambda sample: not sample["overflow"])
+    dataset = dataset.remove_columns("overflow")
+
+    # Convert to PyTorch tensors
+    columns = [
+        "input_ids",
+        "attention_mask",
+        "decoder_input_ids",
+        "decoder_attention_mask",
+    ]
+    if args.mode != "test":
+        columns.append("labels")
+
     dataset.set_format(
         type="torch",
-        columns=["input_ids", "attention_mask", "labels"],
+        columns=columns,
+        output_all_columns=True,
     )
+
+    print(dataset)
 
     # Load model
     model = AutoModelForSeq2SeqLM.from_pretrained(
@@ -184,7 +373,7 @@ if __name__ == "__main__":
     )
 
     # Setup data collator
-    data_collator = DataCollatorForSeq2Seq(
+    data_collator = DataCollatorForSeq2SeqWithText(
         tokenizer=tokenizer, model=model, padding="longest"
     )
 
@@ -208,10 +397,11 @@ if __name__ == "__main__":
         save_total_limit=1,
         metric_for_best_model=f"eval_{args.metric_for_best_model}",
         load_best_model_at_end=True,
+        remove_unused_columns=False,
     )
 
     # Create Trainer
-    trainer = Seq2SeqTrainer(
+    trainer = Seq2SeqTrainerWithSave(
         model=model,
         args=training_args,
         data_collator=data_collator,
@@ -224,8 +414,9 @@ if __name__ == "__main__":
         callbacks=[
             EarlyStoppingCallback(
                 early_stopping_patience=10, early_stopping_threshold=1e-4
-            )
+            ),
         ],
+        output=args.results,
     )
 
     # Run
@@ -241,48 +432,3 @@ if __name__ == "__main__":
             max_length=args.max_output_length,
             do_sample=args.do_sample,
         )
-
-        predictions = tokenizer.batch_decode(
-            output.predictions,
-            skip_special_tokens=True,
-            clean_up_tokenization_spaces=True,
-        )
-
-        # Save results
-        dataset.reset_format()
-        if "delexicalized" in dataset["test"][0]:
-            results = [
-                {
-                    "id": sample["id"],
-                    "context": sample["context"],
-                    "response": sample["response"],
-                    "delexicalized": sample["delexicalized"],
-                    "model_answer": prediction,
-                    "knowledge": sample["knowledge"][: args.candidates],
-                }
-                for sample, prediction in zip(dataset["test"], predictions)
-            ]
-        else:
-            results = [
-                {
-                    "id": sample["id"],
-                    "context": sample["context"],
-                    "response": sample["response"],
-                    "delexicalized": sample["delexicalized"],
-                    "model_answer": prediction,
-                    "knowledge": sample["knowledge"][: args.candidates],
-                }
-                for sample, prediction in zip(dataset["test"], predictions)
-            ]
-
-        with open(args.results, "w") as f:
-            json.dump(
-                {
-                    "version": args.experiment_name,
-                    "metrics": output.metrics,
-                    "data": results,
-                },
-                f,
-                indent=4,
-            )
-        print(f"Saved to: {args.results}")

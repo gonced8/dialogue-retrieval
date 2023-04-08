@@ -128,6 +128,7 @@ if __name__ == "__main__":
             "decoder_attention_mask",
             "labels",
         ],
+        output_all_columns=True,
     )
     print(dataset)
 
@@ -143,28 +144,13 @@ if __name__ == "__main__":
 
     # Open file for results
     with open(args.results, "a") as f:
-        # Save instruction
-        if not file_exists:
-            f.write(json.dumps({"instruction": instruction}) + "\n")
-
         # Loop samples
         for sample in tqdm(dataset["test"], desc="Generating"):
             # Check if sample already computed
             if sample["id"] in results:
                 continue
 
-            while True:
-                try:
-                    # Generate
-                    output = openai.ChatCompletion.create(
-                        model="gpt-3.5-turbo",
-                        messages=sample["messages"],
-                        user=email_hash,
-                    )
-                except Exception as e:
-                    print(e)
-                else:
-                    break
+            # Generate
 
             # Append result to file
             model_answer = output["choices"][0]["message"]["content"]

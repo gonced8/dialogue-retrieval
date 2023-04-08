@@ -9,7 +9,16 @@ from tqdm.contrib import tzip
 
 
 class RetrievalMetrics:
-    def __init__(self, index_dataset, query_dataset, field="data", output=None):
+    def __init__(
+        self,
+        index_dataset,
+        query_dataset,
+        field="data",
+        output=None,
+        delexicalized=False,
+    ):
+        self.delexicalized = delexicalized
+
         # Load datasets
         with open(index_dataset, "r") as f:
             self.index_dataset = json.load(f)
@@ -42,7 +51,7 @@ class RetrievalMetrics:
                 else None,
                 "knowledge": [
                     self.index_dataset[idx]["delexicalized"]
-                    if "delexicalized" in self.index_dataset[0]
+                    if self.delexicalized and "delexicalized" in self.index_dataset[0]
                     else self.index_dataset[idx]["response"]
                     for idx in sample_candidates
                 ],
@@ -58,7 +67,7 @@ class RetrievalMetrics:
         answers = [
             (
                 sample["delexicalized"]
-                if "delexicalized" in self.index_dataset[0]
+                if self.delexicalized and "delexicalized" in self.index_dataset[0]
                 else sample["response"]
             ).lstrip("System: ")
             for sample in dataset
@@ -116,14 +125,21 @@ class RetrievalMetrics:
 
         # Save validation results
         if self.output:
-            output_file = Path(self.output) / (
-                datetime.now().strftime("%Y-%m-%d_%H%M%S") + ".json"
-            )
+            if ".json" in self.output:
+                output_file = self.output
+            else:
+                # Create folder if it doesn't exist
+                output_folder = Path(self.output)
+                output_folder.mkdir(parents=True, exist_ok=True)
+
+                output_file = output_folder / (
+                    datetime.now().strftime("%Y-%m-%d_%H%M%S") + ".json"
+                )
 
             with open(output_file, "w", encoding="utf-8") as f:
                 json.dump(
                     {
-                        "version": Path(self.output).name,
+                        "version": output_folder.name,
                         "metrics": metrics,
                         "data": dataset,
                     },
