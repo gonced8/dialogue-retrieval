@@ -14,8 +14,8 @@ from transformers import (
     Seq2SeqTrainingArguments,
     Seq2SeqTrainer,
 )
-from transformers.tokenization_utils_base import PreTrainedTokenizerBase
-from transformers.utils import PaddingStrategy
+from transformers.deepspeed import is_deepspeed_zero3_enabled
+
 
 instruction = "You are a customer service system. Your task is to answer in a empathic, informative and useful way."
 
@@ -108,8 +108,9 @@ def build_samples_prompt(samples, args, tokenizer):
             samples_knowledge.append(unique_knowledge[: args.candidates])
             possible_answers = "\n".join(unique_knowledge[: args.candidates])
 
-            prompt += f"Based on the possible answers below, answer the last conversation.\nPossible answers:\n{possible_answers}\n"
+            prompt += f"Based on the possible answers below, answer the conversation.\nPossible answers:\n{possible_answers}\n"
         else:
+            samples_knowledge = [None] * len(samples["knowledge"])
             prompt += "Answer the conversation.\n"
 
         # Add context
@@ -231,14 +232,121 @@ class Seq2SeqTrainerWithSave(Seq2SeqTrainer):
     def prediction_step(
         self, model, inputs, prediction_loss_only=None, ignore_keys=None
     ):
-        loss, logits, labels = super().prediction_step(
-            model, inputs, prediction_loss_only, ignore_keys
+        ################ Start copied code ################
+
+        if not self.args.predict_with_generate or prediction_loss_only:
+            return super().prediction_step(
+                model,
+                inputs,
+                prediction_loss_only=prediction_loss_only,
+                ignore_keys=ignore_keys,
+            )
+
+        has_labels = "labels" in inputs
+        inputs = self._prepare_inputs(inputs)
+
+        # XXX: adapt synced_gpus for fairscale as well
+        gen_kwargs = self._gen_kwargs.copy()
+        if (
+            gen_kwargs.get("max_length") is None
+            and gen_kwargs.get("max_new_tokens") is None
+        ):
+            gen_kwargs["max_length"] = self.model.config.max_length
+        gen_kwargs["num_beams"] = (
+            gen_kwargs["num_beams"]
+            if gen_kwargs.get("num_beams") is not None
+            else self.model.config.num_beams
+        )
+        default_synced_gpus = True if is_deepspeed_zero3_enabled() else False
+        gen_kwargs["synced_gpus"] = (
+            gen_kwargs["synced_gpus"]
+            if gen_kwargs.get("synced_gpus") is not None
+            else default_synced_gpus
         )
 
-        if self.output is not None:
-            self.save_results(self.output, inputs, logits)
+        if "attention_mask" in inputs:
+            gen_kwargs["attention_mask"] = inputs.get("attention_mask", None)
+        if "global_attention_mask" in inputs:
+            gen_kwargs["global_attention_mask"] = inputs.get(
+                "global_attention_mask", None
+            )
+        if "decoder_input_ids" in inputs:
+            gen_kwargs["decoder_input_ids"] = inputs["decoder_input_ids"]
+        if "decoder_attention_mask" in inputs:
+            gen_kwargs["decoder_attention_mask"] = inputs["decoder_attention_mask"]
 
-        return loss, logits, labels
+        # prepare generation inputs
+        # some encoder-decoder models can have varying encoder's and thus
+        # varying model input names
+        if (
+            hasattr(self.model, "encoder")
+            and self.model.encoder.main_input_name != self.model.main_input_name
+        ):
+            generation_inputs = inputs[self.model.encoder.main_input_name]
+        else:
+            generation_inputs = inputs[self.model.main_input_name]
+
+        generated_tokens = self.model.generate(
+            generation_inputs,
+            **gen_kwargs,
+        )
+        # in case the batch is shorter than max length, the output should be padded
+        if (
+            gen_kwargs.get("max_length") is not None
+            and generated_tokens.shape[-1] < gen_kwargs["max_length"]
+        ):
+            generated_tokens = self._pad_tensors_to_max_len(
+                generated_tokens, gen_kwargs["max_length"]
+            )
+        elif gen_kwargs.get("max_new_tokens") is not None and generated_tokens.shape[
+            -1
+        ] < (gen_kwargs["max_new_tokens"] + 1):
+            generated_tokens = self._pad_tensors_to_max_len(
+                generated_tokens, gen_kwargs["max_new_tokens"] + 1
+            )
+
+        with torch.no_grad():
+            if has_labels:
+                with self.compute_loss_context_manager():
+                    outputs = model(**inputs)
+                if self.label_smoother is not None:
+                    loss = (
+                        self.label_smoother(outputs, inputs["labels"]).mean().detach()
+                    )
+                else:
+                    loss = (
+                        (outputs["loss"] if isinstance(outputs, dict) else outputs[0])
+                        .mean()
+                        .detach()
+                    )
+            else:
+                loss = None
+
+        if self.args.prediction_loss_only:
+            return (loss, None, None)
+
+        if has_labels:
+            labels = inputs["labels"]
+            if (
+                gen_kwargs.get("max_length") is not None
+                and labels.shape[-1] < gen_kwargs["max_length"]
+            ):
+                labels = self._pad_tensors_to_max_len(labels, gen_kwargs["max_length"])
+            elif gen_kwargs.get("max_new_tokens") is not None and labels.shape[-1] < (
+                gen_kwargs["max_new_tokens"] + 1
+            ):
+                labels = self._pad_tensors_to_max_len(
+                    labels, (gen_kwargs["max_new_tokens"] + 1)
+                )
+        else:
+            labels = None
+
+        ################ End copied code ################
+
+        if self.output is not None:
+            self.save_results(self.output, inputs, generated_tokens)
+
+        return loss, generated_tokens, labels
 
     @staticmethod
     def save_results(output, samples, pred_ids):
@@ -322,7 +430,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--delexicalized", default=False, action=BooleanOptionalAction)
     parser.add_argument("--do_sample", default=False, action=BooleanOptionalAction)
-    parser.add_argument("--results", type=str)
+    parser.add_argument("--results", type=str, help="Folder to save results on.")
     parser.add_argument("--prompt", default=False, action=BooleanOptionalAction)
     args = parser.parse_args()
 
@@ -416,7 +524,7 @@ if __name__ == "__main__":
                 early_stopping_patience=10, early_stopping_threshold=1e-4
             ),
         ],
-        output=args.results,
+        output=f"{args.results}/{args.experiment_name}.jsonl",
     )
 
     # Run

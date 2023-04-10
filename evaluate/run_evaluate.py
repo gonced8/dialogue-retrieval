@@ -6,27 +6,40 @@ import evaluate
 import numpy as np
 from sacrebleu import corpus_bleu
 
+
+def round_floats(o, digits=4):
+    if isinstance(o, float): return round(o, digits)
+    if isinstance(o, dict): return {k: round_floats(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)): return [round_floats(x) for x in o]
+    return o
+
+
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("--results", type=str, required=True)
-    parser.add_argument("--output", type=str, required=True)
+    parser.add_argument("-i", "--input", type=str, required=True)
+    parser.add_argument("-o", "--output", type=str, required=True)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--delexicalized", default=False, action=BooleanOptionalAction)
     parser.add_argument("--retrieved", default=False, action=BooleanOptionalAction)
+    parser.add_argument("--data_field", type=str, default=None)
     args = parser.parse_args()
 
     # Load results
-    data_files = {"test": args.results}
-    results = load_dataset("json", data_files=data_files, field="data")
+    data_files = {"test": args.input}
+    results = load_dataset("json", data_files=data_files, field=args.data_field)
 
     references = [
-        sample["delexicalized"] if args.delexicalized else sample["truth_answer"]
+        sample["delexicalized"] if args.delexicalized else sample.get("truth_answer", sample["reference"])
         for sample in results["test"]
     ]
     predictions = [
-        sample["knowledge"][0] if args.retrieved else sample["model_answer"]
+        sample["knowledge"][0] if args.retrieved else sample.get("model_answer", sample["prediction"])
         for sample in results["test"]
     ]
+
+    # Trim "System: " in the beginning
+    references = [sample.lstrip("System: ") for sample in references]
+    predictions = [sample.lstrip("System: ") for sample in predictions]
 
     # Evaluate
     print("Computing BLEU...")
@@ -76,6 +89,8 @@ if __name__ == "__main__":
         # "bertscore": bertscore_score,
         # "bleurt": bleurt_score,
     }
+    scores = round_floats(scores, 4)
+
     print(json.dumps(scores, indent=4))
 
     with open(args.output, "w") as f:
