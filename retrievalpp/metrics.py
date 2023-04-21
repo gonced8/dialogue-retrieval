@@ -126,7 +126,8 @@ class RetrievalMetrics:
         # Save validation results
         if self.output:
             if ".json" in self.output:
-                output_file = self.output
+                output_file = Path(self.output)
+                version = output_file.stem
             else:
                 # Create folder if it doesn't exist
                 output_folder = Path(self.output)
@@ -136,10 +137,12 @@ class RetrievalMetrics:
                     datetime.now().strftime("%Y-%m-%d_%H%M%S") + ".json"
                 )
 
+                version = output_folder.name
+
             with open(output_file, "w", encoding="utf-8") as f:
                 json.dump(
                     {
-                        "version": output_folder.name,
+                        "version": version,
                         "metrics": metrics,
                         "data": dataset,
                     },

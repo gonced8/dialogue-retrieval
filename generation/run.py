@@ -1,7 +1,7 @@
 from argparse import ArgumentParser, BooleanOptionalAction
 from dataclasses import dataclass
 import json
-from typing import Any, Dict, List, Optional, Union
+from pathlib import Path
 
 from datasets import load_dataset
 import evaluate
@@ -18,6 +18,19 @@ from transformers.deepspeed import is_deepspeed_zero3_enabled
 
 
 instruction = "You are a customer service system. Your task is to answer in a empathic, informative and useful way."
+
+
+def freeze_params(model):
+    """Set requires_grad=False for each of model.parameters()"""
+    for par in model.parameters():
+        par.requires_grad = False
+
+
+def freeze_embeds(model):
+    """Freeze token embeddings and positional embeddings for bart, just token embeddings for t5."""
+    freeze_params(model.shared)
+    for d in [model.encoder, model.decoder]:
+        freeze_params(d.embed_tokens)
 
 
 def build_samples(samples, args, tokenizer):
@@ -127,33 +140,29 @@ def build_samples_prompt(samples, args, tokenizer):
         return_length=True,
     )
 
-    if args.mode == "test":
-        labels = {"length": [None] * len(samples["response"])}
+    # Tokenize decoder inputs
+    decoder_inputs = tokenizer(
+        "<pad>System: ",
+        max_length=args.max_output_length,
+        truncation=True,
+        add_special_tokens=False,
+        return_attention_mask=True,
+    )
+    decoder_inputs = {
+        "decoder_input_ids": [decoder_inputs["input_ids"]] * len(samples["id"]),
+        "decoder_attention_mask": [decoder_inputs["attention_mask"]]
+        * len(samples["id"]),
+    }
 
-        # Tokenize decoder inputs
-        decoder_inputs = tokenizer(
-            "<pad>System: ",
-            max_length=args.max_output_length,
-            truncation=True,
-            add_special_tokens=False,
-            return_attention_mask=True,
-        )
-        decoder_inputs = {
-            "decoder_input_ids": [decoder_inputs["input_ids"]] * len(samples["id"]),
-            "decoder_attention_mask": [decoder_inputs["attention_mask"]]
-            * len(samples["id"]),
-        }
-    else:
-        # Tokenize labels
-        labels = tokenizer(
-            samples["response"],
-            max_length=args.max_output_length,
-            truncation=True,
-            return_attention_mask=False,
-            return_length=True,
-        )
-
-        decoder_inputs = {}
+    # Tokenize labels
+    labels = tokenizer(
+        samples["response"],
+        max_length=args.max_output_length,
+        truncation=True,
+        return_attention_mask=False,
+        return_length=True,
+    )
+    labels["labels"] = labels.pop("input_ids")
 
     # Verify if possible truncation
     overflow = {
@@ -229,6 +238,14 @@ class Seq2SeqTrainerWithSave(Seq2SeqTrainer):
             open(self.output, "w").close()
             print(f"Created file: {self.output}")
 
+    def compute_loss(self, model, inputs, return_outputs=False):
+        model_inputs = {
+            k: v
+            for k, v in inputs.items()
+            if k in ["input_ids", "attention_mask", "labels"]
+        }
+        return super().compute_loss(model, model_inputs, return_outputs)
+
     def prediction_step(
         self, model, inputs, prediction_loss_only=None, ignore_keys=None
     ):
@@ -242,7 +259,9 @@ class Seq2SeqTrainerWithSave(Seq2SeqTrainer):
                 ignore_keys=ignore_keys,
             )
 
-        has_labels = "labels" in inputs
+        has_labels = "labels" in inputs and torch.is_tensor(
+            inputs["labels"]
+        )  # QUICK FIX
         inputs = self._prepare_inputs(inputs)
 
         # XXX: adapt synced_gpus for fairscale as well
@@ -270,6 +289,8 @@ class Seq2SeqTrainerWithSave(Seq2SeqTrainer):
             gen_kwargs["global_attention_mask"] = inputs.get(
                 "global_attention_mask", None
             )
+
+        # ADDED DECODER_INPUT_IDS
         if "decoder_input_ids" in inputs:
             gen_kwargs["decoder_input_ids"] = inputs["decoder_input_ids"]
         if "decoder_attention_mask" in inputs:
@@ -308,7 +329,13 @@ class Seq2SeqTrainerWithSave(Seq2SeqTrainer):
         with torch.no_grad():
             if has_labels:
                 with self.compute_loss_context_manager():
-                    outputs = model(**inputs)
+                    ##################### ADDED MODEL_INPUTS ######################
+                    model_inputs = {
+                        k: v
+                        for k, v in inputs.items()
+                        if k in ["input_ids", "attention_mask", "labels"]
+                    }
+                    outputs = model(**model_inputs)
                 if self.label_smoother is not None:
                     loss = (
                         self.label_smoother(outputs, inputs["labels"]).mean().detach()
@@ -432,6 +459,11 @@ if __name__ == "__main__":
     parser.add_argument("--do_sample", default=False, action=BooleanOptionalAction)
     parser.add_argument("--results", type=str, help="Folder to save results on.")
     parser.add_argument("--prompt", default=False, action=BooleanOptionalAction)
+    parser.add_argument("--logging", default=True, action=BooleanOptionalAction)
+    parser.add_argument(
+        "--freeze", type=bool, default=False, action=BooleanOptionalAction
+    )
+    parser.add_argument("--optimizer", type=str, default="adamw_hf")
     args = parser.parse_args()
 
     # Load dataset
@@ -458,20 +490,29 @@ if __name__ == "__main__":
     dataset = dataset.remove_columns("overflow")
 
     # Convert to PyTorch tensors
-    columns = [
-        "input_ids",
-        "attention_mask",
-        "decoder_input_ids",
-        "decoder_attention_mask",
-    ]
-    if args.mode != "test":
-        columns.append("labels")
+    columns = {
+        "train": ["input_ids", "attention_mask", "labels"],
+        "validation": [
+            "input_ids",
+            "attention_mask",
+            "decoder_input_ids",
+            "decoder_attention_mask",
+            "labels",
+        ],
+        "test": [
+            "input_ids",
+            "attention_mask",
+            "decoder_input_ids",
+            "decoder_attention_mask",
+        ],
+    }
 
-    dataset.set_format(
-        type="torch",
-        columns=columns,
-        output_all_columns=True,
-    )
+    for k, v in dataset.items():
+        v.set_format(
+            type="torch",
+            columns=columns[k],
+            output_all_columns=True,
+        )
 
     print(dataset)
 
@@ -479,6 +520,9 @@ if __name__ == "__main__":
     model = AutoModelForSeq2SeqLM.from_pretrained(
         args.checkpoint if args.checkpoint else args.model
     )
+    if args.freeze:
+        freeze_embeds(model)
+        print("Froze embeddings")
 
     # Setup data collator
     data_collator = DataCollatorForSeq2SeqWithText(
@@ -506,6 +550,8 @@ if __name__ == "__main__":
         metric_for_best_model=f"eval_{args.metric_for_best_model}",
         load_best_model_at_end=True,
         remove_unused_columns=False,
+        logging_strategy="steps" if args.logging else "no",
+        optim=args.optimizer,
     )
 
     # Create Trainer
@@ -524,7 +570,7 @@ if __name__ == "__main__":
                 early_stopping_patience=10, early_stopping_threshold=1e-4
             ),
         ],
-        output=f"{args.results}/{args.experiment_name}.jsonl",
+        output=Path(args.results) / f"{args.experiment_name}.jsonl",
     )
 
     # Run

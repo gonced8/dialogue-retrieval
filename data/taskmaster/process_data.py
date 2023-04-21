@@ -69,22 +69,18 @@ def process_data(args):
     ):
         size = len(new_dataset)
         first = 0 if dialogue[0]["speaker"].lower() == "user" else 1
-        if args.annotations:
-            sequence = get_sequence(dialogue)
 
-        for i in range(2, len(dialogue) + 1, 2):
+        for i in range(first + 1, len(dialogue), 2):
             start = max(first, i - args.max_nturns)
 
-            sample_id = f"{d_id}_{start}-{i}"
-            text = [
+            sample_id = f"{d_id}_{start}-{i+1}"
+            context = [
                 f"{turn['speaker'].capitalize()}: " + turn["utterance"]
                 for turn in dialogue[start:i]
             ]
+            response = f"System: {dialogue[i]['utterance']}"
 
-            sample = {"id": sample_id, "text": text}
-            if args.annotations:
-                sample["annotations"] = sequence[start:i]
-
+            sample = {"id": sample_id, "context": context, "response": response}
             new_dataset.append(sample)
 
         exclude_indices[d_id] = list(range(size, size + len(dialogue) // 2))
@@ -94,7 +90,12 @@ def process_data(args):
 
     # Save new dataset
     with open(output, "w") as f:
-        json.dump({"version": args.version, "data": new_dataset}, f, indent=4)
+        json.dump(
+            {"version": args.version, "data": new_dataset},
+            f,
+            indent=4,
+            ensure_ascii=False,
+        )
 
     with open(output.parent / (output.stem + "_exclude_indices.json"), "w") as f:
         json.dump(exclude_indices, f, indent=4)
@@ -111,7 +112,6 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--output", type=str, required=True)
     parser.add_argument("-n", "--max_nturns", type=int, default=6)
     parser.add_argument("-v", "--version", type=str, required=True)
-    parser.add_argument("--annotations", default=False, action=BooleanOptionalAction)
 
     args = parser.parse_args()
 

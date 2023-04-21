@@ -43,7 +43,7 @@ def extract_data(input_directory, debug=False):
                     dialogue_data.append(
                         {
                             "turn_id": turn_id,
-                            "speaker": speaker if speaker != "ASSISTANT" else "SYSTEM",
+                            "speaker": "User" if speaker != "ASSISTANT" else "System",
                             "utterance": " ".join(utterance),
                         }
                     )
@@ -60,7 +60,7 @@ def extract_data(input_directory, debug=False):
             dialogue_data.append(
                 {
                     "turn_id": turn_id,
-                    "speaker": speaker if speaker != "ASSISTANT" else "SYSTEM",
+                    "speaker": "User" if speaker != "ASSISTANT" else "System",
                     "utterance": " ".join(utterance),
                 }
             )

@@ -16,6 +16,7 @@ class RetrievalTrainer(Trainer):
         heuristic="rouge",
         n_candidates=10,
         loss_fn="cross_entropy",
+        index_key="answer",
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -37,6 +38,7 @@ class RetrievalTrainer(Trainer):
 
         self.n_candidates = n_candidates
         self.loss_fn = loss_fn
+        self.index_key = index_key
 
         self.index_idx = None
 
@@ -86,7 +88,9 @@ class RetrievalTrainer(Trainer):
     ):
         # Generate index
         self.index = generate_index(
-            self.get_train_dataloader(), self.model.encoder_answer, index_key="answer"
+            self.get_train_dataloader(),
+            self.model.encoder_answer,
+            index_key=self.index_key,
         )
 
         return super().evaluate(eval_dataset, ignore_keys, metric_key_prefix)
@@ -94,7 +98,9 @@ class RetrievalTrainer(Trainer):
     def predict(self, test_dataset, ignore_keys=["answer"], metric_key_prefix="test"):
         # Generate index
         self.index = generate_index(
-            self.get_train_dataloader(), self.model.encoder_answer, index_key="answer"
+            self.get_train_dataloader(),
+            self.model.encoder_answer,
+            index_key=self.index_key,
         )
 
         return super().predict(test_dataset, ignore_keys, metric_key_prefix)
@@ -121,8 +127,7 @@ class RetrievalTrainer(Trainer):
                 self.index,
                 self.n_candidates,
                 outputs=context_embeddings,
-                index_key="context",
-                # index_key="answer",
+                index_key=self.index_key,
                 queries_ids=inputs["id"],
             )
 

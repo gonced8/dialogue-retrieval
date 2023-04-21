@@ -71,6 +71,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--data_field", type=none_or_str, default="data")
     parser.add_argument("--delexicalized", default=False, action=BooleanOptionalAction)
+    parser.add_argument("--index_key", type=str, default="answer")
     args = parser.parse_args()
 
     # Initialize model and tokenizer
@@ -112,6 +113,7 @@ if __name__ == "__main__":
 
     # Filter overflowing samples
     dataset = dataset.filter(lambda sample: not sample["overflow"])
+    dataset = dataset.remove_columns("overflow")
 
     dataset.set_format(
         type="torch",
@@ -180,6 +182,7 @@ if __name__ == "__main__":
         heuristic=args.heuristic,
         n_candidates=args.n_candidates,
         loss_fn=args.loss_fn,
+        index_key=args.index_key,
     )
 
     # Run
