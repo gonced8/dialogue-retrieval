@@ -127,7 +127,7 @@ class RetrievalTrainer(Trainer):
                 self.index,
                 self.n_candidates,
                 outputs=context_embeddings,
-                index_key=self.index_key,
+                index_key="context",
                 queries_ids=inputs["id"],
             )
 

@@ -11,6 +11,7 @@ openai
 openpyxl
 pandas
 pyserini==0.20.0
+python-dotenv==1.0.0
 pytorch-lightning==1.6.5
 rouge-score==0.1.2
 sacrebleu==2.3.1

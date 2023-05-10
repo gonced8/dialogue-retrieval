@@ -1,51 +1,52 @@
 from argparse import ArgumentParser
 import json
+import os
 import pathlib
 
 from datasets import load_dataset
+from dotenv import load_dotenv
 import openai
 from tqdm import tqdm
 
-openai.api_key_path = "/home/gecr/.openai.key"
+# OpenAI Setup
+load_dotenv()
+openai.api_key = os.environ["OPENAI_API_KEY"]
+openai.organization = os.environ["OpenAI_Organization"]
 email_hash = str(hash("goncalo.raposo.ext@unbabel.com"))
 
-instruction = {
-    "role": "system",
-    "content": """You are a customer service system. The user will ask you something and you must answer accordingly to the past answers.
-Your response must be delexicalized, that is, certain values are replaced by their slots. The possible slots are: [address], [area], [arriveby], [bookday], [bookpeople], [bookstay], [booktime], [choice], [day], [departure], [destination], [duration], [entrancefee], [food], [leaveat], [name], [openhours], [phone], [postcode], [price], [pricerange], [ref], [stars], [trainid], [type].
-Here are some examples of delexicalization:
-- from Cambridge => from [departure]
-- at 191 Histon Road Chesterton => at [address]
-- around north part of town => around [area] part of town
-- arrive by 19:00 => arrive by [arriveby]""",
-}
+instruction = "You are a customer service system. Your task is to answer in a empathic, informative and useful way.\n\n"
 
 
-def build_samples(samples, n_candidates=5):
+def build_samples_prompt(samples, args):
+    # Get input text (prompts)
     global instruction
-    samples_messages = []
+    prompts = []
     samples_knowledge = []
 
     for context, knowledge in zip(samples["context"], samples["knowledge"]):
-        context = {"role": "user", "content": "\n".join(context)}
+        # Add instruction
+        prompt = instruction
 
-        message = [instruction, context]
-
+        # Add retrieved information
         if knowledge and args.candidates > 0:
-            unique_knowledge = [*set(knowledge)]  # Remove duplicate candidates
-            samples_knowledge.append(unique_knowledge[:n_candidates])
-            past_answers = {
-                "role": "assistant",
-                "content": (
-                    "Past answers:\n- " + "\n- ".join(unique_knowledge[:n_candidates])
-                ),
-            }
+            unique_knowledge = list(set(knowledge))  # Remove duplicate candidates
+            samples_knowledge.append(unique_knowledge[: args.candidates])
+            possible_answers = "\n".join(unique_knowledge[: args.candidates])
 
-            message.append(past_answers)
+            prompt += f"Based on the possible answers below, answer the conversation.\nPossible answers:\n{possible_answers}\n\n"
+        else:
+            samples_knowledge = [None] * len(samples["knowledge"])
+            prompt += "Answer the conversation.\n\n"
 
-        samples_messages.append(message)
+        # Add context
+        context = "\n".join(context)
+        prompt += f"Conversation:\n{context}"
 
-    return {"knowledge": samples_knowledge, "messages": samples_messages}
+        prompts.append(prompt)
+
+    messages = [[{"role": "user", "content": prompt}] for prompt in prompts]
+
+    return {"knowledge": samples_knowledge, "messages": messages}
 
 
 if __name__ == "__main__":
@@ -55,6 +56,7 @@ if __name__ == "__main__":
     parser.add_argument("--preprocess_batch_size", type=int, default=256)
     parser.add_argument("--candidates", type=int, default=5)
     parser.add_argument("--results", type=str, required=True)
+    parser.add_argument("--model", type=str, default="gpt-3.5-turbo")
     args = parser.parse_args()
 
     # Load dataset
@@ -63,11 +65,11 @@ if __name__ == "__main__":
 
     # Build samples
     dataset = dataset.map(
-        build_samples,
+        build_samples_prompt,
         batched=True,
         batch_size=args.preprocess_batch_size,
         fn_kwargs={
-            "n_candidates": args.candidates,
+            "args": args,
         },
     )
 
@@ -82,10 +84,10 @@ if __name__ == "__main__":
         results = []
 
     # Open file for results
-    with open(args.results, "a") as f:
+    with open(args.results, "a", buffering=1) as f:
         # Save instruction
-        if not file_exists:
-            f.write(json.dumps({"instruction": instruction}) + "\n")
+        # if not file_exists:
+        #    f.write(json.dumps({"instruction": instruction}) + "\n")
 
         # Loop samples
         for sample in tqdm(dataset["test"], desc="Generating"):
@@ -97,7 +99,7 @@ if __name__ == "__main__":
                 try:
                     # Generate
                     output = openai.ChatCompletion.create(
-                        model="gpt-3.5-turbo",
+                        model=args.model,
                         messages=sample["messages"],
                         user=email_hash,
                     )
@@ -113,11 +115,10 @@ if __name__ == "__main__":
                     {
                         "id": sample["id"],
                         "context": sample["context"],
-                        "response": sample["response"],
-                        "delexicalized": sample["delexicalized"],
-                        "model_answer": model_answer,
+                        "reference": sample["response"],
+                        "prediction": model_answer,
                         "knowledge": sample["knowledge"],
                     }
                 )
-                + "\n"
+                + "\n",
             )

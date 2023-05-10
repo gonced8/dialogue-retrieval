@@ -1,6 +1,7 @@
 from argparse import ArgumentParser, BooleanOptionalAction
 
 from datasets import load_dataset
+from datasets.features import Features
 from transformers import (
     AutoTokenizer,
     EarlyStoppingCallback,
@@ -90,7 +91,12 @@ if __name__ == "__main__":
         data_files["validation"] = args.val_dataset
     if args.test_dataset:
         data_files["test"] = args.test_dataset
-    dataset = load_dataset("json", data_files=data_files, field=args.data_field)
+
+    dataset = load_dataset(
+        "json",
+        data_files=data_files,
+        field=args.data_field,
+    )
 
     # Prepare samples
     if args.expand_samples:

@@ -460,6 +460,7 @@ if __name__ == "__main__":
     parser.add_argument("--results", type=str, help="Folder to save results on.")
     parser.add_argument("--prompt", default=False, action=BooleanOptionalAction)
     parser.add_argument("--logging", default=True, action=BooleanOptionalAction)
+    parser.add_argument("--fp16", default=False, action=BooleanOptionalAction)
     parser.add_argument(
         "--freeze", type=bool, default=False, action=BooleanOptionalAction
     )
@@ -552,6 +553,7 @@ if __name__ == "__main__":
         remove_unused_columns=False,
         logging_strategy="steps" if args.logging else "no",
         optim=args.optimizer,
+        fp16=args.fp16,
     )
 
     # Create Trainer

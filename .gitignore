@@ -3,8 +3,9 @@ results/
 .vscode/
 data/*/*/
 checkpoints/
-retrieval/data/*/index/
 generation/data/*
+retrieval/data/*/index/
+retrievalpp/models/
 retrievalpp/data/*
 
 # Byte-compiled / optimized / DLL files
