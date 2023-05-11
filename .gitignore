@@ -3,6 +3,7 @@ results/
 .vscode/
 data/*/*/
 checkpoints/
+evaluate/bleurt/
 generation/data/*
 retrieval/data/*/index/
 retrievalpp/models/

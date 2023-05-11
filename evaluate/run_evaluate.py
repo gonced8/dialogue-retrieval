@@ -4,7 +4,7 @@ import json
 from datasets import load_dataset
 import evaluate
 import numpy as np
-from sacrebleu import corpus_bleu
+from bleurt import score
 
 
 def round_floats(o, digits=4):
@@ -79,14 +79,14 @@ if __name__ == "__main__":
     )
 
     print("Computing BLEURT...")
-    bleurt = evaluate.load("bleurt", module_type="metric", checkpoint="BLEURT-20")
-    bleurt_score = bleurt.compute(predictions=predictions, references=references)
+    scorer = score.BleurtScorer("bleurt/BLEURT-20")
+    bleurt_score = scorer.score(candidates=predictions, references=references)
 
     # Average
     bertscore_score = {
         k: np.mean(v).item() for k, v in bertscore_score.items() if k != "hashcode"
     }
-    bleurt_score = {k: np.mean(v).item() for k, v in bleurt_score.items()}
+    bleurt_score = np.mean(bleurt_score).item()
 
     # Save scores
     scores = {
