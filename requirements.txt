@@ -20,7 +20,7 @@ sentence-transformers==2.2.2
 scikit-learn
 streamlit==1.17.0
 tensorboard==2.11.2
-torch==1.12.0
+torch==1.13.1
 torchmetrics
 transformers==4.36.0
 
