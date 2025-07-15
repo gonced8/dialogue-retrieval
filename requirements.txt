@@ -22,6 +22,6 @@ streamlit==1.37.0
 tensorboard==2.11.2
 torch==2.7.1
 torchmetrics
-transformers==4.48.0
+transformers==4.52.1
 
 git+https://github.com/Tomiinek/MultiWOZ_Evaluation.git@master
